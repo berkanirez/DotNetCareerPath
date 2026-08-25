@@ -1,0 +1,89 @@
+## .NET
+bin/
+obj/
+out/
+publish/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+msbuild.log
+msbuild.err
+msbuild.wrn
+
+## Visual Studio
+.vs/
+*.userprefs
+
+## Test / coverage results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+TestResults/
+
+## NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+.nuget/
+
+## Rider / JetBrains
+.idea/
+
+## VS Code (allow shared config, ignore personal/workspace noise)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+## Logs
+*.log
+logs/
+
+## Local databases
+*.mdf
+*.ldf
+*.ndf
+*.db
+*.sqlite
+*.sqlite3
+
+## Secrets and environment files
+.env
+.env.*
+*.secrets.json
+appsettings.*.local.json
+appsettings.Development.json.user
+secrets.json
+
+## OS temporary files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Common temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
