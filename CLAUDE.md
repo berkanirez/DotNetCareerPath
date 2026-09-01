@@ -158,3 +158,15 @@ When in doubt, teach less content more deeply.
 Teaching responses to Berkan must be in Turkish.
 
 Code, identifiers, file names, commit messages and all documentation must remain in English.
+
+**Exception:** files under `docs/daily-code-notes/` (the per-day code walkthrough files, see below) are written in Turkish. They are personal study material, not portfolio-facing documentation. `README.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`, and all source code/identifiers/commit messages remain in English without exception.
+
+## Daily code notes
+
+After implementing each day's code, Claude must create or update `docs/daily-code-notes/day-XX.md`, in Turkish. For every code file/block added that day, in the order it was written/used, the file must cover:
+
+1. The code itself.
+2. Why it was written this way — the purpose, the real problem it solves, what it will be used for.
+3. How it works — the syntax/technical explanation of the constructs involved.
+
+This is in addition to, not a replacement for, `docs/LEARNING_LOG.md` (which stays a high-level narrative log in English) and the rest of the end-of-session protocol.
