@@ -47,7 +47,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 
 | Requirement | Target Level | Project / Phase | Planned Evidence | Current Level | Status |
 |---|---|---|---|---|---|
-| C# | 4 | Phase 1–6 | Unit test, working endpoint, English technical explanation | 1 | In Progress |
+| C# | 4 | Phase 1–6 | Unit test, working endpoint, English technical explanation | 2 | In Progress |
 | .NET CLI / runtime | 3 | Phase 1 | Debugging note, English technical explanation | 1 | In Progress |
 | ASP.NET Core | 4 | Phase 1–4 | Working endpoint, integration test | 1 | In Progress |
 | MVC | 3 | Phase 1 | Working user flow | 1 | In Progress |
@@ -61,7 +61,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | SOAP | 1 | Phase 4 | English technical explanation, working endpoint | 0 | Planned |
 | Authentication | 3 | Phase 2 | Working endpoint, integration test | 0 | Planned |
 | RBAC and authorization | 4 | Phase 2–3 | Integration test, working endpoint | 0 | Planned |
-| OOP | 3 | Phase 1–3 | Commit, English technical explanation | 0 | Planned |
+| OOP | 3 | Phase 1–3 | Commit, English technical explanation | 1 | In Progress |
 | SOLID | 3 | Phase 3 | ADR, commit | 0 | Planned |
 | Clean code | 3 | Phase 3 | Commit, pull request | 0 | Planned |
 | Design patterns | 3 | Phase 3–4 | ADR, commit | 0 | Planned |

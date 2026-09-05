@@ -1,0 +1,33 @@
+@model IReadOnlyList<Skill>
+
+@{
+    ViewData["Title"] = "Skills";
+}
+
+<h1>Skills</h1>
+
+<p>Toplam @Model.Count skill.</p>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Current Level</th>
+            <th>Target Level</th>
+            <th>At Target?</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var skill in Model)
+        {
+            <tr>
+                <td>@skill.Name</td>
+                <td>@skill.Category</td>
+                <td>@skill.CurrentLevel</td>
+                <td>@skill.TargetLevel</td>
+                <td>@(skill.IsAtTarget ? "Yes" : "No")</td>
+            </tr>
+        }
+    </tbody>
+</table>
