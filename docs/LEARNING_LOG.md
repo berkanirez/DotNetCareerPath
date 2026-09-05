@@ -118,3 +118,41 @@ Copy this template for each new entry:
 **Independent task:** Add a fourth `Skill` (`SQL Server`) with `Notes` left unset; print its null-safe `Notes` length separately from the existing line. Completed and independently verified by Berkan (console output confirmed `0`); re-verified by Claude by reading the final `Program.cs`.
 
 **Next session:** Phase 1, Week 1, Day 3 — ASP.NET Core request lifecycle (`Program.cs`, middleware, routing, controllers, views, DI) and the first real read-only vertical slice, replacing today's temporary console block with a `SkillsController` + view over the in-memory `Skill` list.
+
+### 2026-09-05 — Phase 1, Week 1, Day 3
+
+**Topic:** ASP.NET Core request lifecycle, middleware, routing, controllers, views, dependency injection; first real read-only vertical slice.
+
+**Problem solved:** Turning Day 2's throwaway console verification into a real, HTTP-reachable feature, while introducing dependency injection for a genuine reason: decoupling `SkillsController` from *where* skill data comes from, so that Day 4's move to SQL Server requires no controller changes at all.
+
+**What I learned:** The distinction between controller lifetime (a new `SkillsController` per request, created by the framework's controller activator) and service lifetime (`AddSingleton` means one shared `InMemorySkillCatalog` instance across all requests, for the life of the app); why a method with "get" semantics (`GetAll()`) should return a defensive copy rather than mutate shared internal state in place — concretely, why sorting a singleton's backing list in place is a real concurrency hazard once multiple requests can run in parallel, not just a style preference; why depending on an interface (`ISkillCatalog`) rather than a concrete class (`InMemorySkillCatalog`) is what actually makes a future data-source swap (EF Core on Day 4) a one-line change in `Program.cs` instead of an edit to the controller.
+
+**What I implemented:**
+* `ISkillCatalog` interface (`GetAll()` contract) and `InMemorySkillCatalog` (`src/RoadmapOS.Web/Domain/`), registered as a singleton in `Program.cs`.
+* Removed Day 2's temporary `Program.cs` console verification block entirely.
+* `SkillsController` (`src/RoadmapOS.Web/Controllers/`) — constructor-injected `ISkillCatalog`, single `Index()` action.
+* `Views/Skills/Index.cshtml` — strongly-typed view rendering a Bootstrap table of skills, plus a total-count line (`Model.Count`) added as the independent task.
+* `Views/_ViewImports.cshtml` updated to import `RoadmapOS.Web.Domain` for all views.
+
+**Runtime flow:** `GET /Skills` → Kestrel → middleware pipeline (routing, authorization) → convention-based routing matches `SkillsController.Index()` → the DI container constructs `SkillsController`, resolving `ISkillCatalog` to the registered singleton `InMemorySkillCatalog` → `Index()` calls `GetAll()` (returns a sorted copy) → `View(skills)` resolves `Views/Skills/Index.cshtml` by convention → the view renders the table inside `_Layout.cshtml` → HTML returned. Full trace with code in `docs/daily-code-notes/day-03.md`.
+
+**Verification:**
+* `dotnet build` → 0 errors, 0 warnings.
+* `GET /` → HTTP 200 (no regression).
+* `GET /Skills` → HTTP 200, table in the exact expected sort order (`EF Core → SQL Server → ASP.NET Core → C#`), matching Day 2's `IComparable<Skill>` behavior, now proven inside a real HTTP request.
+* Independent task verified: "Toplam 4 skill." rendered correctly above the table.
+
+**Evidence:** Working endpoint (`/Skills`); English/Turkish technical explanation (DI lifetime, defensive copying under a singleton, interface vs. concrete-type injection); independent task completed and re-verified.
+
+**Mistakes or difficulties:** None blocking. Needed a deeper explanation of *why* `GetAll()` copies before sorting — the concurrency angle (shared singleton state under parallel requests) wasn't obvious from "don't mutate the source," and needed to be distinguished explicitly from the unrelated EF Core change-tracking concern that will come up on Day 4.
+
+**Production considerations:** `InMemorySkillCatalog` and `AddSingleton` are today-only choices, tied to data being constant and held in memory. Day 4 replaces the singleton in-memory catalog with a scoped, EF Core-backed one — `SkillsController` will not change. No error handling exists yet for a missing/broken data source, since today's source can't fail.
+
+**Understanding questions and answers:**
+1. Q: Who creates `SkillsController`, and when? A: ASP.NET Core's controller activator, once per incoming HTTP request that routes to it — not us, and not once per app lifetime.
+2. Q: Why copy `_skills` before sorting in `GetAll()`? A: `InMemorySkillCatalog` is a singleton, so `_skills` is shared across all concurrent requests; sorting it in place risks a race condition (concurrent read+mutate on a non-thread-safe `List<T>`) under parallel requests — copying makes each `GetAll()` call self-contained. This is unrelated to EF Core's change-tracking/`SaveChanges()` mechanism, which will be the relevant concern on Day 4 instead.
+3. Q: What would injecting the concrete `InMemorySkillCatalog` directly (no interface) have cost us? A: Nothing today, but swapping to an EF Core-backed catalog on Day 4 would then require editing `SkillsController`'s constructor signature itself, instead of changing one registration line in `Program.cs` — the controller would be coupled to a specific data-access implementation instead of an abstraction.
+
+**Independent task:** Add a total skill count line (`<p>Toplam @Model.Count skill.</p>`) above the table in `Views/Skills/Index.cshtml`. Completed and independently verified by Berkan; re-verified by Claude (`/Skills` shows "Toplam 4 skill.").
+
+**Next session:** Phase 1, Week 1, Day 4 — SQL Server, EF Core, `DbContext`, entities, migrations; persist and retrieve the first `Skill` record, replacing `InMemorySkillCatalog` with an EF Core-backed `ISkillCatalog` implementation.

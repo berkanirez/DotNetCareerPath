@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 2 (complete)
+* **Day:** 3 (complete)
 * **Active project:** RoadmapOS
-* **Status:** Day 2 complete — domain types (class/record/interface/nullable reference types) implemented and verified
+* **Status:** Day 3 complete — first read-only vertical slice working end to end (DI, controller, view) over in-memory data
 * **Available study time:** 2 hours/day
-* **Progress:** ~2% (Day 2 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~3% (Day 3 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -31,6 +31,12 @@ This file reflects the actual current state of the learning journey. It must alw
 * Independent task completed and verified: added a fourth `Skill` (`SQL Server`) with `Notes` left unset, confirmed `Notes?.Length ?? 0` correctly prints `0` for a genuinely null value.
 * `docs/daily-code-notes/day-02.md` created (Turkish) — line-by-line code walkthrough covering purpose and syntax for each piece added today. This is now a standing daily practice (see `CLAUDE.md` "Daily code notes" section).
 * Day 2 changes committed by Berkan (`f062f7a`).
+* `ISkillCatalog` interface and `InMemorySkillCatalog` implementation added under `src/RoadmapOS.Web/Domain/`, registered via `builder.Services.AddSingleton<ISkillCatalog, InMemorySkillCatalog>()`.
+* Day 2's temporary `Program.cs` console verification block removed — replaced by a real vertical slice.
+* `SkillsController` (constructor-injected `ISkillCatalog`) and `Views/Skills/Index.cshtml` added; `/Skills` verified end to end (HTTP 200, correct sort order, correct count).
+* Independent task completed and verified: skill count (`Model.Count`) displayed above the table.
+* `docs/daily-code-notes/day-03.md` created (Turkish).
+* Day 3 changes committed and pushed by Berkan (`34eebf5`, includes the pending Day 2 doc updates).
 
 ## Decisions on record
 
@@ -52,12 +58,13 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 1, Week 1, Day 3: explain and plan the ASP.NET Core request lifecycle (`Program.cs`, middleware, routing, controllers, views, DI) and build the first read-only vertical slice, replacing the temporary `Program.cs` console block with a real `SkillsController` + view backed by an in-memory (hardcoded) list.
+2. Begin Phase 1, Week 1, Day 4: explain and plan SQL Server, EF Core, `DbContext`, entities, and migrations; persist and retrieve the first `Skill` record, replacing `InMemorySkillCatalog` with an EF Core-backed implementation of `ISkillCatalog` (no controller changes needed — see Day 3's DI discussion).
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Day 3 expected outcome
+## Day 4 expected outcome
 
-* Request lifecycle (middleware, routing, DI) explained end to end using the existing `Skill` domain type.
-* Temporary Day 2 console verification block removed from `Program.cs`.
-* A real, working read-only vertical slice: a controller action returning a view that lists the in-memory `Skill` data.
-* No database, authentication, Docker or future technology added.
+* SQL Server and EF Core concepts (`DbContext`, entity configuration, migrations) explained.
+* `Skill` mapped as an EF Core entity; a migration created and applied against a local SQL Server instance.
+* `ISkillCatalog` gets a new EF Core-backed implementation; `InMemorySkillCatalog` retired (or kept only for reference/tests, to be decided in the Day 4 plan).
+* `/Skills` still works end to end, now reading from a real database, with `SkillsController` unchanged.
+* No authentication, Docker or future technology added.

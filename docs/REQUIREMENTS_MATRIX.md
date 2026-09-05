@@ -49,8 +49,8 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 |---|---|---|---|---|---|
 | C# | 4 | Phase 1–6 | Unit test, working endpoint, English technical explanation | 2 | In Progress |
 | .NET CLI / runtime | 3 | Phase 1 | Debugging note, English technical explanation | 1 | In Progress |
-| ASP.NET Core | 4 | Phase 1–4 | Working endpoint, integration test | 1 | In Progress |
-| MVC | 3 | Phase 1 | Working user flow | 1 | In Progress |
+| ASP.NET Core | 4 | Phase 1–4 | Working endpoint, integration test | 2 | In Progress |
+| MVC | 3 | Phase 1 | Working user flow | 2 | In Progress |
 | Controller-based Web API | 4 | Phase 2 | Working endpoint, integration test | 0 | Planned |
 | EF Core | 4 | Phase 1–4 | Unit test, integration test, commit | 0 | Planned |
 | SQL Server | 3 | Phase 1–4 | Working endpoint, debugging note | 0 | Planned |
@@ -64,7 +64,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | OOP | 3 | Phase 1–3 | Commit, English technical explanation | 1 | In Progress |
 | SOLID | 3 | Phase 3 | ADR, commit | 0 | Planned |
 | Clean code | 3 | Phase 3 | Commit, pull request | 0 | Planned |
-| Design patterns | 3 | Phase 3–4 | ADR, commit | 0 | Planned |
+| Design patterns | 3 | Phase 3–4 | ADR, commit | 1 | In Progress |
 | Unit testing | 3 | Phase 1–6 | Unit test | 0 | Planned |
 | Mocking | 3 | Phase 2 | Unit test | 0 | Planned |
 | TDD | 2 | Phase 1 | Unit test, commit | 0 | Planned |
