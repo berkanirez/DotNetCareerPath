@@ -156,3 +156,44 @@ Copy this template for each new entry:
 **Independent task:** Add a total skill count line (`<p>Toplam @Model.Count skill.</p>`) above the table in `Views/Skills/Index.cshtml`. Completed and independently verified by Berkan; re-verified by Claude (`/Skills` shows "Toplam 4 skill.").
 
 **Next session:** Phase 1, Week 1, Day 4 — SQL Server, EF Core, `DbContext`, entities, migrations; persist and retrieve the first `Skill` record, replacing `InMemorySkillCatalog` with an EF Core-backed `ISkillCatalog` implementation.
+
+### 2026-09-05 — Phase 1, Week 1, Day 4
+
+**Topic:** SQL Server, Entity Framework Core, `DbContext`, entities, migrations; persisting and retrieving the first real record.
+
+**Problem solved:** Replacing Day 3's in-memory data with genuine, durable persistence in SQL Server, using the `ISkillCatalog` abstraction from Day 3 so the swap required zero changes to `SkillsController`.
+
+**What I learned:** Why `AddDbContext`'s default `Scoped` lifetime is not just a style choice but a correctness requirement — `DbContext` holds a live connection and a mutable change tracker, neither of which is thread-safe, so sharing one instance across concurrent requests (as a `Singleton` would) risks both crashes (`InvalidOperationException` from concurrent operations on one context) and silent correctness bugs (one request's uncommitted in-memory changes leaking into another's read via the identity map) — a categorically bigger risk than Day 3's `List<T>.Sort()` concurrency concern, which is why `InMemorySkillCatalog` correctly stayed a `Singleton` while `EfSkillCatalog` needed `Scoped`; how EF Core derives `NOT NULL` vs `NULL` migration columns directly from the C# nullable reference type annotations already written in `Skill.cs` (via compiler-emitted metadata read through reflection during model building) rather than needing separate configuration; that a real environment blocker (no SQL Server engine installed, only client tooling) needs to be surfaced and resolved before continuing, not worked around silently with a different database.
+
+**What I implemented:**
+* Installed SQL Server 2022 Express locally (`localhost\SQLEXPRESS`) after two failed `winget` attempts (a Turkish-locale install prompt breaking unattended mode) — resolved via manual installer download.
+* Added `Microsoft.EntityFrameworkCore.SqlServer` and `Microsoft.EntityFrameworkCore.Design` packages.
+* `RoadmapOSDbContext` (`src/RoadmapOS.Web/Data/`) with `DbSet<Skill> Skills`.
+* `EfSkillCatalog : ISkillCatalog` (`src/RoadmapOS.Web/Data/`) — queries via `_context.Skills.ToList()`, then reuses the existing `IComparable<Skill>` sort.
+* `InitialCreate` migration generated and applied (`dotnet ef migrations add` / `dotnet ef database update`); `RoadmapOS` database and `Skills` table created in real SQL Server.
+* `Program.cs`: `AddDbContext<RoadmapOSDbContext>` (reading the connection string from `appsettings.Development.json`), DI registration switched to `AddScoped<ISkillCatalog, EfSkillCatalog>()`; temporary Development-only seed block (placeholder until Day 9).
+* `InMemorySkillCatalog` kept in the codebase (unregistered) as a future test double for Day 7.
+
+**Runtime flow:** `GET /Skills` → `SkillsController.Index()` (unchanged since Day 3) → DI now resolves `ISkillCatalog` to `EfSkillCatalog` → `_context.Skills.ToList()` translates to a real `SELECT` against SQL Server → results mapped back to `Skill` objects → sorted → same view as before. Full trace in `docs/daily-code-notes/day-04.md`.
+
+**Verification:**
+* `dotnet build` → 0 errors, 0 warnings.
+* `dotnet ef migrations add` / `dotnet ef database update` → `RoadmapOS` database and `Skills` table created, confirmed via direct SQL query independent of the running app.
+* `GET /Skills` → HTTP 200, 4 seeded skills in correct sort order, "Toplam 4 skill."
+* App stopped entirely, then queried the database directly via raw SQL — all 4 rows still present, proving real persistence (unlike Day 2–3's in-memory data, which vanished on restart).
+* Independent task: a 5th skill (`Git`) inserted directly via SSMS/raw SQL (bypassing the app entirely); `/Skills` correctly showed 5 skills with `Git` placed via the level-then-name tie-break rule, next to `C#`.
+
+**Evidence:** Working endpoint (`/Skills`) now backed by a real database; commit (`4fec28a`); English/Turkish technical explanation (DbContext lifetime and thread-safety, nullable-to-NOT-NULL derivation, DI-enabled swap); independent task completed and re-verified.
+
+**Mistakes or difficulties:** SQL Server had to be installed from scratch — no engine was present, only SSMS (a client tool, mistaken at first for the engine itself) and ODBC/OLEDB drivers. `winget`'s unattended install failed twice due to an unhandled Turkish-locale prompt; resolved by downloading the installer manually and answering the prompt interactively. This was treated as a real blocker and surfaced explicitly rather than silently substituting a different database, per `CLAUDE.md`'s engineering rules.
+
+**Production considerations:** Connection string is plaintext in `appsettings.Development.json` — acceptable today only because it carries no secret (Windows Authentication, no password); production requires proper secret management. The seed block is an explicit placeholder, not a real seeding strategy (Day 9). `TrustServerCertificate=True` is a local-dev-only simplification.
+
+**Understanding questions and answers:**
+1. Q: Why does `DbContext` need `Scoped` where `InMemorySkillCatalog` was fine as `Singleton`? A: `DbContext` holds a live, non-thread-safe connection and change tracker that must not be shared across concurrent requests — sharing it risks both a documented runtime exception (`InvalidOperationException`) and silent cross-request data leakage via the identity map, a materially bigger and different risk than a plain list's sort-while-reading race.
+2. Q: Where did EF Core get the `NOT NULL`/`NULL` decision per column? A: From the C# nullable reference type annotation (`string` vs `string?`) already on each `Skill` property, read via compiler-emitted metadata during EF Core's model-building step — changing the `?` would change the generated migration.
+3. Q: What Day 3 decision made the `InMemorySkillCatalog` → `EfSkillCatalog` swap require zero changes to `SkillsController`? A: Injecting the `ISkillCatalog` interface into the controller's constructor rather than a concrete class.
+
+**Independent task:** Insert a 5th skill (`Git`) directly into the `Skills` table via SSMS/raw SQL (bypassing the app entirely), then verify it appears correctly sorted at `/Skills`. Completed and independently verified by Berkan; re-verified by Claude via both a direct SQL query and the running app.
+
+**Next session:** Phase 1, Week 1, Day 5 — model binding, validation, and a `Skill` create/edit flow with error display, manually verified.

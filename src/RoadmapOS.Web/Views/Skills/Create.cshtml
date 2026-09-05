@@ -1,0 +1,48 @@
+@model SkillFormModel
+
+@{
+    ViewData["Title"] = "New Skill";
+}
+
+<h1>New Skill</h1>
+
+<form asp-action="Create" method="post">
+    <div asp-validation-summary="All" class="text-danger"></div>
+
+    <div class="mb-3">
+        <label asp-for="Name" class="form-label"></label>
+        <input asp-for="Name" class="form-control" />
+        <span asp-validation-for="Name" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Category" class="form-label"></label>
+        <input asp-for="Category" class="form-control" />
+        <span asp-validation-for="Category" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="CurrentLevel" class="form-label"></label>
+        <select asp-for="CurrentLevel" asp-items="Html.GetEnumSelectList<SkillLevel>()" class="form-select"></select>
+        <span asp-validation-for="CurrentLevel" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="TargetLevel" class="form-label"></label>
+        <select asp-for="TargetLevel" asp-items="Html.GetEnumSelectList<SkillLevel>()" class="form-select"></select>
+        <span asp-validation-for="TargetLevel" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Notes" class="form-label"></label>
+        <textarea asp-for="Notes" class="form-control"></textarea>
+        <span asp-validation-for="Notes" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

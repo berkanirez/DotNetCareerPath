@@ -17,4 +17,23 @@ public class EfSkillCatalog : ISkillCatalog
         skills.Sort();
         return skills;
     }
+
+    public Skill? GetById(int id)
+    {
+        return _context.Skills.Find(id);
+    }
+
+    public void Add(Skill skill)
+    {
+        _context.Skills.Add(skill);
+        _context.SaveChanges();
+    }
+
+    public void Update(Skill skill)
+    {
+        // 'skill' was already loaded (and is being tracked) by this same DbContext
+        // via GetById earlier in the same request, so its changed properties are
+        // already known to the change tracker — SaveChanges() is all that's needed.
+        _context.SaveChanges();
+    }
 }

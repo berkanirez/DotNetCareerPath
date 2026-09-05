@@ -8,6 +8,8 @@
 
 <p>Toplam @Model.Count skill.</p>
 
+<p><a asp-action="Create" class="btn btn-primary">New Skill</a></p>
+
 <table class="table">
     <thead>
         <tr>
@@ -16,6 +18,7 @@
             <th>Current Level</th>
             <th>Target Level</th>
             <th>At Target?</th>
+            <th></th>
         </tr>
     </thead>
     <tbody>
@@ -27,6 +30,7 @@
                 <td>@skill.CurrentLevel</td>
                 <td>@skill.TargetLevel</td>
                 <td>@(skill.IsAtTarget ? "Yes" : "No")</td>
+                <td><a asp-action="Edit" asp-route-id="@skill.Id">Edit</a></td>
             </tr>
         }
     </tbody>
