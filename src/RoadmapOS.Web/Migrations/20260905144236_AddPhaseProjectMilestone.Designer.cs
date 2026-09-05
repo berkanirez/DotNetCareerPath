@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RoadmapOS.Web.Data;
 
@@ -10,9 +11,11 @@ using RoadmapOS.Web.Data;
 namespace RoadmapOS.Web.Migrations
 {
     [DbContext(typeof(RoadmapOSDbContext))]
-    partial class RoadmapOSDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260905144236_AddPhaseProjectMilestone")]
+    partial class AddPhaseProjectMilestone
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

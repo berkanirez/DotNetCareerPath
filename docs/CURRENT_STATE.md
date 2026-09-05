@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 4 (complete)
+* **Day:** 5 (complete)
 * **Active project:** RoadmapOS
-* **Status:** Day 4 complete — `Skill` persisted in real SQL Server via EF Core; `/Skills` reads from the database end to end
+* **Status:** Day 5 complete — Skill create/edit flow working end to end with model binding, validation and CSRF protection
 * **Available study time:** 2 hours/day
-* **Progress:** ~4% (Day 4 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~5% (Day 5 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -45,6 +45,14 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-04.md` created (Turkish).
 * Independent task completed and verified: a 5th skill (`Git`) inserted directly via SSMS/raw SQL, confirmed it appears correctly sorted (tie-break with `C#`) at `/Skills`.
 * Day 4 changes committed and pushed by Berkan (`4fec28a`).
+* `ISkillCatalog` extended with `GetById`, `Add`, `Update`; implemented in both `EfSkillCatalog` and `InMemorySkillCatalog`.
+* `Models/SkillFormModel.cs` added (validation-attributed DTO, decoupled from the `Skill` domain entity to avoid over-posting).
+* `SkillsController` gained `Create` (GET/POST) and `Edit` (GET/POST) actions, both POSTs protected with `[ValidateAntiForgeryToken]`.
+* `Views/Skills/Create.cshtml` and `Edit.cshtml` added (tag helpers, client+server validation); `Index.cshtml` linked to both.
+* Verified end to end via curl: invalid submission → HTTP 200 with validation error, no redirect; valid submission → HTTP 302 + persisted row; missing anti-forgery token → HTTP 400 (confirmed live).
+* `docs/daily-code-notes/day-05.md` created (Turkish).
+* Independent task completed and verified: edited `Git`'s `CurrentLevel` to match its `TargetLevel`; confirmed `/Skills` now shows "Yes" under "At Target?" for that row.
+* Day 5 changes committed and pushed by Berkan (`50482af`).
 
 ## Decisions on record
 
@@ -67,13 +75,13 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 1, Week 1, Day 5: explain and plan model binding, validation, and a `Skill` create/edit flow (forms, error display), with manual verification.
+2. Begin Phase 1, Week 2, Day 6: explain and plan roadmap/phase/project/milestone relationships, EF Core relationships, and database constraints.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Day 5 expected outcome
+## Day 6 expected outcome
 
-* Model binding and validation attributes explained.
-* A create (and/or edit) flow for `Skill` built on top of the existing EF Core-backed `ISkillCatalog`/`RoadmapOSDbContext`.
-* Validation errors displayed correctly in the view.
-* Manually verified end to end (submit valid data, submit invalid data, confirm behavior in both cases).
+* EF Core relationship concepts (one-to-many, foreign keys, navigation properties) explained.
+* New entities (e.g. `RoadmapPhase`, `Project`, `Milestone`) added with real relationships to each other and/or to `Skill`.
+* Explicit database constraints introduced (required fields, max lengths, foreign key behavior) — deferred from Day 4/5 on purpose.
+* A new migration created and applied reflecting the relationships.
 * No authentication, Docker or future technology added.

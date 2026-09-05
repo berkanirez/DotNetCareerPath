@@ -31,6 +31,24 @@ if (app.Environment.IsDevelopment())
         );
         context.SaveChanges();
     }
+
+    if (!context.RoadmapPhases.Any())
+    {
+        var phase = new RoadmapPhase("Phase 1 — RoadmapOS", 1);
+        context.RoadmapPhases.Add(phase);
+        context.SaveChanges();
+
+        var project = new Project("RoadmapOS", phase.Id);
+        context.Projects.Add(project);
+        context.SaveChanges();
+
+        context.Milestones.AddRange(
+            new Milestone("Day 1-5: environment, domain model, EF Core, create/edit flow", project.Id) { IsCompleted = true },
+            new Milestone("Day 6: relationships and database constraints", project.Id) { IsCompleted = true },
+            new Milestone("Day 7-10: domain service, LINQ, evidence tracking, release", project.Id) { IsCompleted = false }
+        );
+        context.SaveChanges();
+    }
 }
 
 // Configure the HTTP request pipeline.

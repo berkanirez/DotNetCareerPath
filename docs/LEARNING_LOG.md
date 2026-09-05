@@ -197,3 +197,45 @@ Copy this template for each new entry:
 **Independent task:** Insert a 5th skill (`Git`) directly into the `Skills` table via SSMS/raw SQL (bypassing the app entirely), then verify it appears correctly sorted at `/Skills`. Completed and independently verified by Berkan; re-verified by Claude via both a direct SQL query and the running app.
 
 **Next session:** Phase 1, Week 1, Day 5 — model binding, validation, and a `Skill` create/edit flow with error display, manually verified.
+
+### 2026-09-05 — Phase 1, Week 1, Day 5
+
+**Topic:** Model binding, validation, `Skill` create/edit flow, error display, manual verification.
+
+**Problem solved:** Letting the app itself write data (not just SSMS or seed code), safely — turning raw HTTP form input into validated domain objects without letting the form dictate what the domain entity looks like or which of its fields can be set from the outside.
+
+**What I learned:** Why binding a form directly to a domain entity (`Skill`) instead of a dedicated DTO (`SkillFormModel`) is a real over-posting risk, not a theoretical one — any public-settable property becomes fair game for a raw POST request even if the rendered form never exposed an input for it; the concrete mechanics of `[ValidateAntiForgeryToken]` — confirmed live that removing/lacking a valid token yields HTTP 400 when the attribute is present, versus silent, unprotected success if the attribute were absent entirely; why `EfSkillCatalog.Update()` still needs an explicit `SaveChanges()` call despite the entity already being tracked (there's a real, separate I/O step to the database still pending) while `InMemorySkillCatalog.Update()` needs literally nothing (the "storage" and the in-memory object are the same reference, so there is no separate step at all).
+
+**What I implemented:**
+* `ISkillCatalog` extended with `GetById(int id)`, `Add(Skill skill)`, `Update(Skill skill)`.
+* `EfSkillCatalog` and `InMemorySkillCatalog` both updated to implement the extended interface (the latter kept purely for future Day 7 test-double use, still unregistered).
+* `Models/SkillFormModel.cs` — a validation-attributed DTO (`[Required]`, `[StringLength]`) separate from `Skill`.
+* `SkillsController.Create()` (GET/POST) and `Edit(int id)` (GET/POST), both POST actions carrying `[ValidateAntiForgeryToken]`.
+* `Views/Skills/Create.cshtml` and `Edit.cshtml` — tag-helper-driven forms (`asp-for`, `asp-validation-for`, `asp-validation-summary`, `Html.GetEnumSelectList<SkillLevel>()`) with client + server validation wired via `_ValidationScriptsPartial`.
+* `Views/Skills/Index.cshtml` linked to both new flows ("New Skill", per-row "Edit").
+
+**Runtime flow:** Full trace (GET form → POST → model binding → `ModelState` validation → either re-render with errors or persist + redirect) documented in `docs/daily-code-notes/day-05.md`.
+
+**Verification:**
+* `dotnet build` → 0 errors, 0 warnings.
+* Live curl test, invalid data (empty `Name`) → HTTP 200 (no redirect), "The Name field is required" rendered.
+* Live curl test, valid data (`Docker`) → HTTP 302 → `/Skills`, new row present ("Toplam 6 skill.").
+* Live curl test, Edit with a `Notes` change → HTTP 302; app stopped, direct SQL query confirmed the change persisted.
+* Live curl test, POST with no anti-forgery token at all → HTTP 400, confirmed exactly as predicted.
+* Test-only `Docker` row removed afterward to keep the database at the expected state.
+* Independent task: edited `Git`'s `CurrentLevel` to equal its `TargetLevel` via the real Edit form; `/Skills` correctly showed "Yes" for that row, confirming Day 2's `IsAtTarget` computed property still works correctly end to end through a real form submission.
+
+**Evidence:** Working endpoints (`/Skills/Create`, `/Skills/Edit/{id}`); commit (`50482af`); English/Turkish technical explanation (over-posting risk, CSRF mechanics, EF Core change tracking vs. plain in-memory mutation); independent task completed and re-verified.
+
+**Mistakes or difficulties:** None blocking. The anti-forgery mechanics needed a live demonstration (not just an explanation) to land clearly — worth repeating this pattern (predict, then prove with a real request) for future security-adjacent topics.
+
+**Production considerations:** `[StringLength(100)]` etc. are application-level checks only — no matching database constraint exists yet (deferred to Day 6 on purpose). No delete flow exists (out of today's scope). `Create.cshtml`/`Edit.cshtml` intentionally duplicate markup, to be refactored on Day 10.
+
+**Understanding questions and answers:**
+1. Q: Concrete over-posting scenario if `Skill` were bound directly? A: A raw POST (bypassing the rendered form) adding a field the UI never exposed — e.g. a future `VerifiedByMentor`-style flag with a public setter — would be silently accepted by the model binder purely because the field name matches a property, regardless of whether the real form ever rendered an input for it.
+2. Q: HTTP status without a valid anti-forgery token? A: 400 Bad Request when `[ValidateAntiForgeryToken]` is present (confirmed live); if the attribute were removed entirely, the request would instead succeed normally with no protection at all.
+3. Q: Why are both `Update()` methods "empty" but for different reasons? A: EF Core's version still has a real, pending I/O step to flush to SQL Server (`SaveChanges()`), even though the entity is already tracked; the in-memory version has no separate storage layer at all — the object returned by `GetById` *is* the stored object, so mutating it already *is* the update.
+
+**Independent task:** Using the real Edit form, set a skill's `CurrentLevel` equal to its `TargetLevel` and confirm `/Skills` shows "Yes" under "At Target?" for that row. Completed and independently verified by Berkan (`Git`, both levels set to `CanImplementIndependently`); re-verified by Claude via direct SQL query and the running app.
+
+**Next session:** Phase 1, Week 2, Day 6 — roadmap/phase/project/milestone relationships, EF Core relationships, database constraints.
