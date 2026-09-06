@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/RoadmapOS.Web/RoadmapOS.Web.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RoadmapOS.Web.Tests/RoadmapOS.Web.Tests.csproj" />
+  </Folder>
 </Solution>

@@ -65,9 +65,9 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | SOLID | 3 | Phase 3 | ADR, commit | 0 | Planned |
 | Clean code | 3 | Phase 3 | Commit, pull request | 1 | In Progress |
 | Design patterns | 3 | Phase 3–4 | ADR, commit | 2 | In Progress |
-| Unit testing | 3 | Phase 1–6 | Unit test | 0 | Planned |
+| Unit testing | 3 | Phase 1–6 | Unit test | 2 | In Progress |
 | Mocking | 3 | Phase 2 | Unit test | 0 | Planned |
-| TDD | 2 | Phase 1 | Unit test, commit | 0 | Planned |
+| TDD | 2 | Phase 1 | Unit test, commit | 1 | In Progress |
 | Integration testing | 3 | Phase 2–4 | Integration test | 0 | Planned |
 | Test automation | 3 | Phase 2, 6 | Integration test, deployment | 0 | Planned |
 | Redis | 3 | Phase 3 | Working endpoint, debugging note | 0 | Planned |

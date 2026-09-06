@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 5 (complete)
+* **Day:** 7 (complete)
 * **Active project:** RoadmapOS
-* **Status:** Day 5 complete — Skill create/edit flow working end to end with model binding, validation and CSRF protection
+* **Status:** Day 7 complete — `ProgressCalculator` domain service built via TDD (xUnit), 6/6 tests passing
 * **Available study time:** 2 hours/day
-* **Progress:** ~5% (Day 5 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~6% (Day 7 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -53,6 +53,19 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-05.md` created (Turkish).
 * Independent task completed and verified: edited `Git`'s `CurrentLevel` to match its `TargetLevel`; confirmed `/Skills` now shows "Yes" under "At Target?" for that row.
 * Day 5 changes committed and pushed by Berkan (`50482af`).
+* `RoadmapPhase`, `Project`, `Milestone` entities added (`src/RoadmapOS.Web/Domain/`) with a `RoadmapPhase (1) → Project (*) → Milestone (*)` relationship chain.
+* `RoadmapOSDbContext.OnModelCreating` added: `HasMaxLength`/`IsRequired` on all string properties (including the previously-deferred `Skill.Name`/`Category`/`Notes`), and explicit `HasOne`/`WithMany`/`HasForeignKey`/`OnDelete(Cascade)` for both new relationships.
+* `AddPhaseProjectMilestone` migration created and applied — new tables, foreign keys, and auto-generated indexes confirmed in SQL Server.
+* Seed block extended with real roadmap data (Phase 1 → RoadmapOS project → 3 milestones reflecting actual Day 1–10 progress).
+* Constraints verified live, independent of the app: invalid FK insert rejected, over-length `Name` insert rejected (`String or binary data would be truncated`), and cascade delete confirmed (deleting a phase removed its project and milestones automatically).
+* `docs/daily-code-notes/day-06.md` created (Turkish).
+* Independent task completed and verified: added a second `Project` under the existing phase via SSMS, then confirmed SQL Server rejects a `Milestone` insert with an invalid `ProjectId`.
+* Day 6 changes committed and pushed by Berkan (`66445ed`).
+* `tests/RoadmapOS.Web.Tests` xUnit project created, added to the solution, referencing `RoadmapOS.Web`.
+* `Domain/ProgressCalculator.cs` added (no interface — no real need for one yet, unlike `ISkillCatalog`), built test-first: watched 2 tests genuinely fail (`NotImplementedException`) before implementing, then pass.
+* 4 more edge-case tests added (multi-skill weighted sum, over-target clamping via `Math.Min`, all-targets-zero divide-by-zero guard) — 6 tests total, all passing (~30ms, no DB/HTTP involved).
+* `docs/daily-code-notes/day-07.md` created (Turkish), including the actual Red→Green transcript.
+* Independent task completed and verified: wrote a new test for a skill with `TargetLevel=NotStudied` mixed with a normal skill; correctly hand-calculated the expected result (100) before running it, confirming the formula's non-obvious behavior (a targetless skill's `CurrentLevel` inflates the overall percentage without being checked against anything).
 
 ## Decisions on record
 
@@ -75,13 +88,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 1, Week 2, Day 6: explain and plan roadmap/phase/project/milestone relationships, EF Core relationships, and database constraints.
+2. Begin Phase 1, Week 2, Day 8: explain and plan LINQ, dashboard queries, and overall/category progress, wiring `ProgressCalculator` into a real controller/view for the first time.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Day 6 expected outcome
+## Day 8 expected outcome
 
-* EF Core relationship concepts (one-to-many, foreign keys, navigation properties) explained.
-* New entities (e.g. `RoadmapPhase`, `Project`, `Milestone`) added with real relationships to each other and/or to `Skill`.
-* Explicit database constraints introduced (required fields, max lengths, foreign key behavior) — deferred from Day 4/5 on purpose.
-* A new migration created and applied reflecting the relationships.
+* LINQ query operators explained properly (deferred/minimal usage so far — `ToList()`, `Any()` — becomes a real topic today).
+* A dashboard controller/view showing overall progress (via `ProgressCalculator`) and category-level progress (via LINQ grouping over `Skill.Category`).
+* `InMemorySkillCatalog` (kept unregistered since Day 4) still reserved for test-double use, not needed yet for this UI-facing work.
 * No authentication, Docker or future technology added.

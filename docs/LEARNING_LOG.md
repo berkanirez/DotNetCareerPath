@@ -239,3 +239,77 @@ Copy this template for each new entry:
 **Independent task:** Using the real Edit form, set a skill's `CurrentLevel` equal to its `TargetLevel` and confirm `/Skills` shows "Yes" under "At Target?" for that row. Completed and independently verified by Berkan (`Git`, both levels set to `CanImplementIndependently`); re-verified by Claude via direct SQL query and the running app.
 
 **Next session:** Phase 1, Week 2, Day 6 — roadmap/phase/project/milestone relationships, EF Core relationships, database constraints.
+
+### 2026-09-05 — Phase 1, Week 2, Day 6
+
+**Topic:** Roadmap/phase/project/milestone relationships, EF Core relationships, database constraints.
+
+**Problem solved:** Moving from a single, unrelated entity (`Skill`) to a genuinely related data model — `RoadmapPhase (1) → Project (*) → Milestone (*)`, mirroring the very roadmap this app is meant to track — and making sure referential integrity and length constraints are enforced by the database itself, not just by application code, closing the gap explicitly left open on Day 4/5.
+
+**What I learned:** EF Core's foreign key naming convention (`<navigation>Id` or `<principal type>Id`) and why a differently-named property would require explicit Fluent API configuration; the precise mechanics of `DeleteBehavior.Restrict` vs `Cascade` — Restrict doesn't "warn," it makes the SQL Server `DELETE` statement itself fail outright with a foreign key violation (the same underlying mechanism as an invalid-FK `INSERT` failing, just triggered from the opposite direction); why DTO-level validation (`[StringLength]`) and EF Core/DB-level constraints (`HasMaxLength`) are not redundant but serve different, complementary purposes (UX/fail-fast vs. data-integrity-guaranteed-regardless-of-entry-point) — proven concretely by running a raw SQL insert that bypassed the DTO entirely and was still correctly rejected by the database.
+
+**What I implemented:**
+* `RoadmapPhase`, `Project`, `Milestone` entities (`src/RoadmapOS.Web/Domain/`) with collection/reference navigation properties.
+* `RoadmapOSDbContext.OnModelCreating`: `HasMaxLength`/`IsRequired` for all string properties (including `Skill`'s previously-deferred constraints), explicit `HasOne`/`WithMany`/`HasForeignKey`/`OnDelete(Cascade)` for both relationships.
+* `AddPhaseProjectMilestone` migration, applied to the real database.
+* Seed block extended with real roadmap data reflecting actual progress (self-referential: the app now tracks its own Day 1–10 milestones).
+
+**Runtime flow:** No HTTP-facing changes today — pure EF Core model configuration, migration, and startup-time seeding. Full trace in `docs/daily-code-notes/day-06.md`.
+
+**Verification:**
+* `dotnet build` → 0 errors, 0 warnings.
+* Migration applied — three new tables, two foreign keys (with cascade), two auto-generated indexes confirmed via direct SQL query.
+* Seed data verified correct and correctly linked (`RoadmapPhaseId`/`ProjectId` matching).
+* Live constraint tests, run directly against SQL Server (bypassing the app entirely): invalid FK insert → rejected (`FOREIGN KEY constraint` violation); 200-character `Name` insert (limit 150) → rejected (`String or binary data would be truncated`); deleting a populated `RoadmapPhase` → cascade removed its `Project` and all 3 `Milestone` rows; app restarted → seed block detected the empty table and recreated the data automatically.
+* Independent task: added a second `Project` under the existing phase via SSMS, then personally triggered and observed a rejected `Milestone` insert with an invalid `ProjectId`.
+
+**Evidence:** Real, verified database constraints (working migration + live rejection tests); commit (`66445ed`); English/Turkish technical explanation (FK convention, Restrict vs. Cascade mechanics, DTO-vs-DB validation layering); independent task completed and re-verified.
+
+**Mistakes or difficulties:** None blocking. Seeded rows' identity values are no longer `1`/`1`/`1,2,3` after repeated cascade-delete-and-reseed cycles during testing — expected SQL Server IDENTITY behavior (gaps after deletes), not a bug, and data remained fully consistent throughout.
+
+**Production considerations:** `OnDelete(Cascade)` fits a single-user learning app; a multi-tenant production system would more often default to `Restrict` to prevent accidental bulk data loss. No controller/view exists yet for these three entities — deliberately out of today's scope (not requested by the roadmap for Day 6).
+
+**Understanding questions and answers:**
+1. Q: Would `RelatedProjectId` still be auto-detected as a foreign key by EF Core? A: No — it matches neither the `<navigation>Id` nor `<principal-type>Id` convention, so it would need explicit `HasForeignKey` configuration.
+2. Q: What exactly happens with `Restrict` when deleting a populated `RoadmapPhase`? A: The `DELETE` statement itself is rejected by SQL Server with a foreign key violation — not a warning, an outright failure; nothing is deleted.
+3. Q: Which live test proved DTO-only validation would be insufficient? A: The 200-character `Name` raw SQL insert — it never touched `SkillFormModel`/`ModelState` at all, yet was still correctly rejected, because the enforcement came from `HasMaxLength` at the database level.
+
+**Independent task:** Add a second `Project` under the existing seeded `RoadmapPhase` via SSMS, then deliberately attempt a `Milestone` insert with an invalid `ProjectId` and observe the rejection firsthand. Completed and independently verified by Berkan; re-verified by Claude via direct SQL query (final state: 1 phase, 1 project, 3 milestones, correctly linked).
+
+**Next session:** Phase 1, Week 2, Day 7 — progress-calculation rules, a domain service, and the first TDD workflow with xUnit.
+
+### 2026-09-05 — Phase 1, Week 2, Day 7
+
+**Topic:** Progress-calculation rules, a domain service, the first TDD workflow, xUnit.
+
+**Problem solved:** Replacing slow, manual verification (curl, SSMS queries) with fast, automated, repeatable tests for a genuine piece of business logic (overall progress calculation), written test-first rather than tested after the fact.
+
+**What I learned:** The mechanics of a unit test from first principles — Arrange/Act/Assert, what `[Fact]` actually does (marks a method for the xUnit runner to discover and execute), and precisely what `Assert.Equal(expected, actual)` does (a plain comparison that throws — and is caught by the runner — when the two don't match; note the argument order is reversed from Jest's `expect(actual).toBe(expected)`); why `ProgressCalculator` deliberately has no interface, unlike `ISkillCatalog` — no second implementation will ever exist, so an interface here would be an unjustified abstraction; that `dotnet test` must be run from the solution root (or the test project itself) — running it from `src/RoadmapOS.Web` silently builds but discovers zero tests, since that project carries no test SDK reference; that `Math.Min(100, x)` is a plain "clamp to a ceiling" idiom, not special syntax.
+
+**What I implemented:**
+* `tests/RoadmapOS.Web.Tests` xUnit project, added to the solution, referencing `RoadmapOS.Web`.
+* `Domain/ProgressCalculator.cs` — genuinely built test-first: started as `throw new NotImplementedException()`, watched two tests fail for real, then implemented the real formula (sum of `CurrentLevel` over sum of `TargetLevel`, as a percentage), watched them pass.
+* Four more tests covering edge cases: empty list (÷0 guard), multiple skills (weighted sum, not averaged per-skill), over-target clamping via `Math.Min`, and all-targets-zero (÷0 guard again, this one passed on first try since the guard already existed — a genuine "the code was already correct for a case I hadn't tested yet" moment).
+
+**Runtime flow:** No HTTP/DB involved — `dotnet test` discovers and runs all `[Fact]`-marked methods in the test project directly against the compiled `RoadmapOS.Web` assembly. Full Red→Green transcript in `docs/daily-code-notes/day-07.md`.
+
+**Verification:**
+* `dotnet test` (from repo root) → 6/6 passing, ~30ms total, no server or database involved.
+* `dotnet build` (full solution) → 0 errors, 0 warnings.
+* Confirmed, live, that running `dotnet test` from the wrong directory (`src/RoadmapOS.Web`) produces no test results at all — just a build.
+* Independent task: added a test for a skill with `TargetLevel=NotStudied` mixed with a normal skill; hand-calculated the expected result (100) before running, matched exactly — and surfaced a genuinely non-obvious rule: a targetless skill's `CurrentLevel` still inflates the overall percentage without being checked against anything, even though the other skill in the same list is only at ~33% of its own target.
+
+**Evidence:** Automated, passing test suite (`dotnet test`); commit (pending — see below); English/Turkish technical explanation of Assert/Fact/TDD mechanics (needed a second, slower pass after initial confusion); independent task completed correctly and re-verified.
+
+**Mistakes or difficulties:** The first explanation of xUnit/`Assert.Equal`/`Math.Min` assumed too much — needed a full first-principles re-explanation (what a test actually does, argument order, what `Math.Min` computes) before the independent task could be attempted meaningfully. Worth front-loading this level of detail earlier next time a brand-new syntax/library is introduced. Also hit real friction running `dotnet test` from the wrong project directory — a good, concrete lesson about solution vs. project scope for CLI commands.
+
+**Production considerations:** These are real, permanent tests — not a "demo" pattern, this is exactly how it's done in production. No UI consumes `ProgressCalculator` yet (deliberately, Day 8's job).
+
+**Understanding questions and answers:**
+1. Q: Why no interface for `ProgressCalculator`, unlike `ISkillCatalog`? A: `ISkillCatalog` has two real, alternating implementations (in-memory/EF Core); `ProgressCalculator` has and will have exactly one — an interface would be an unjustified abstraction.
+2. Q: What does seeing a test fail before the implementation exists actually prove? A: That the test is capable of failing at all — a test that has never been observed to fail could be silently useless (e.g., asserting something trivially true regardless of the code).
+3. Q: Which test would catch removing `Math.Min(100, ...)`? A: `CalculateOverallProgress_SkillExceedsTarget_ClampsAtHundred`, which asserts `100` where the unclamped raw math produces `400`.
+
+**Independent task:** Write a new test for a skill with `TargetLevel=NotStudied` mixed with a normal skill; predict the result by hand before running. Completed and independently verified by Berkan (predicted and got `100`, correctly identified the running location issue himself); re-verified by Claude (6/6 passing from repo root).
+
+**Next session:** Phase 1, Week 2, Day 8 — LINQ, dashboard queries, overall and category progress, wiring `ProgressCalculator` into a real controller/view.
