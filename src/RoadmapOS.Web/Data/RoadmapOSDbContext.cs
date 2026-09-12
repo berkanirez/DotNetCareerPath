@@ -13,6 +13,7 @@ public class RoadmapOSDbContext : DbContext
     public DbSet<RoadmapPhase> RoadmapPhases => Set<RoadmapPhase>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Milestone> Milestones => Set<Milestone>();
+    public DbSet<Evidence> EvidenceRecords => Set<Evidence>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +46,16 @@ public class RoadmapOSDbContext : DbContext
             entity.HasOne(m => m.Project)
                 .WithMany(p => p.Milestones)
                 .HasForeignKey(m => m.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Evidence>(entity =>
+        {
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(300);
+
+            entity.HasOne(e => e.Skill)
+                .WithMany(s => s.EvidenceRecords)
+                .HasForeignKey(e => e.SkillId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

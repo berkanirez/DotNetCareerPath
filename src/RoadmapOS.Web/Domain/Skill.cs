@@ -8,6 +8,7 @@ public class Skill : IComparable<Skill>
     public SkillLevel CurrentLevel { get; set; }
     public SkillLevel TargetLevel { get; set; }
     public string? Notes { get; set; }
+    public List<Evidence> EvidenceRecords { get; set; } = new();
 
     public Skill(string name, string category, SkillLevel currentLevel, SkillLevel targetLevel)
     {

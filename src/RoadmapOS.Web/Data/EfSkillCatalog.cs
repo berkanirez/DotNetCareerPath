@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using RoadmapOS.Web.Domain;
 
 namespace RoadmapOS.Web.Data;
@@ -13,7 +14,7 @@ public class EfSkillCatalog : ISkillCatalog
 
     public IReadOnlyList<Skill> GetAll()
     {
-        var skills = _context.Skills.ToList();
+        var skills = _context.Skills.Include(s => s.EvidenceRecords).ToList();
         skills.Sort();
         return skills;
     }

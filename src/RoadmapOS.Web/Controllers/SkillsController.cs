@@ -7,10 +7,12 @@ namespace RoadmapOS.Web.Controllers;
 public class SkillsController : Controller
 {
     private readonly ISkillCatalog _skillCatalog;
+    private readonly ILogger<SkillsController> _logger;
 
-    public SkillsController(ISkillCatalog skillCatalog)
+    public SkillsController(ISkillCatalog skillCatalog, ILogger<SkillsController> logger)
     {
         _skillCatalog = skillCatalog;
+        _logger = logger;
     }
 
     public IActionResult Index()
@@ -41,6 +43,8 @@ public class SkillsController : Controller
 
         _skillCatalog.Add(skill);
 
+        _logger.LogInformation("Skill {SkillId} ({SkillName}) created.", skill.Id, skill.Name);
+
         return RedirectToAction(nameof(Index));
     }
 
@@ -50,6 +54,7 @@ public class SkillsController : Controller
         var skill = _skillCatalog.GetById(id);
         if (skill is null)
         {
+            _logger.LogWarning("Skill {SkillId} not found for edit.", id);
             return NotFound();
         }
 
@@ -83,6 +88,7 @@ public class SkillsController : Controller
         var skill = _skillCatalog.GetById(id);
         if (skill is null)
         {
+            _logger.LogWarning("Skill {SkillId} not found for edit.", id);
             return NotFound();
         }
 
@@ -93,6 +99,8 @@ public class SkillsController : Controller
         skill.Notes = model.Notes;
 
         _skillCatalog.Update(skill);
+
+        _logger.LogInformation("Skill {SkillId} ({SkillName}) updated.", skill.Id, skill.Name);
 
         return RedirectToAction(nameof(Index));
     }
