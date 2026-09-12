@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 7 (complete)
+* **Day:** 8 (complete)
 * **Active project:** RoadmapOS
-* **Status:** Day 7 complete — `ProgressCalculator` domain service built via TDD (xUnit), 6/6 tests passing
+* **Status:** Day 8 complete — `/Dashboard` shows overall and category progress via LINQ (`GroupBy`/`Select`), verified against real data
 * **Available study time:** 2 hours/day
-* **Progress:** ~6% (Day 7 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~7% (Day 8 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -66,6 +66,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * 4 more edge-case tests added (multi-skill weighted sum, over-target clamping via `Math.Min`, all-targets-zero divide-by-zero guard) — 6 tests total, all passing (~30ms, no DB/HTTP involved).
 * `docs/daily-code-notes/day-07.md` created (Turkish), including the actual Red→Green transcript.
 * Independent task completed and verified: wrote a new test for a skill with `TargetLevel=NotStudied` mixed with a normal skill; correctly hand-calculated the expected result (100) before running it, confirming the formula's non-obvious behavior (a targetless skill's `CurrentLevel` inflates the overall percentage without being checked against anything).
+* `Domain/CategoryProgress.cs` added; `ProgressCalculator.CalculateCategoryProgress` built test-first (`GroupBy`/`Select`), 2 more tests added (8 total, all passing).
+* `ProgressCalculator` registered in DI for the first time (`AddSingleton`), now that a real consumer (`DashboardController`) exists.
+* `Models/DashboardViewModel.cs`, `Controllers/DashboardController.cs`, `Views/Dashboard/Index.cshtml` added; `/Dashboard` shows overall + per-category progress bars.
+* Real bug caught and fixed live: the server's Turkish (`tr-TR`) culture made `double.ToString()` use a comma decimal separator, producing invalid CSS (`width: 16,67%`); fixed with `CultureInfo.InvariantCulture`.
+* `_Layout.cshtml` nav updated with "Dashboard" and (previously missing) "Skills" links.
+* `docs/daily-code-notes/day-08.md` created (Turkish).
+* Independent task completed and verified: added a new `Skill` (`xUnit`, category `Testing`) via the Create form; `/Dashboard` automatically showed a new "Testing" row with the correctly hand-calculated percentage, with no code changes — confirming the dashboard is fully data-driven.
 
 ## Decisions on record
 
@@ -88,12 +95,13 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 1, Week 2, Day 8: explain and plan LINQ, dashboard queries, and overall/category progress, wiring `ProgressCalculator` into a real controller/view for the first time.
+2. Begin Phase 1, Week 2, Day 9: explain and plan requirement mapping, evidence records, logging, seed data, and basic error handling.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Day 8 expected outcome
+## Day 9 expected outcome
 
-* LINQ query operators explained properly (deferred/minimal usage so far — `ToList()`, `Any()` — becomes a real topic today).
-* A dashboard controller/view showing overall progress (via `ProgressCalculator`) and category-level progress (via LINQ grouping over `Skill.Category`).
-* `InMemorySkillCatalog` (kept unregistered since Day 4) still reserved for test-double use, not needed yet for this UI-facing work.
+* A real seed data strategy replacing the temporary Development-only seed blocks in `Program.cs` (in place since Day 4/6).
+* Requirement/evidence concept modeled in the app itself (linking `Skill`-like tracking to the manual `REQUIREMENTS_MATRIX.md` process), if in scope for today — to be confirmed in the day's plan.
+* Structured logging introduced where meaningful.
+* Basic error handling for realistic failure cases (not yet covered: e.g. a missing record on `Edit`).
 * No authentication, Docker or future technology added.

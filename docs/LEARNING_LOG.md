@@ -313,3 +313,42 @@ Copy this template for each new entry:
 **Independent task:** Write a new test for a skill with `TargetLevel=NotStudied` mixed with a normal skill; predict the result by hand before running. Completed and independently verified by Berkan (predicted and got `100`, correctly identified the running location issue himself); re-verified by Claude (6/6 passing from repo root).
 
 **Next session:** Phase 1, Week 2, Day 8 — LINQ, dashboard queries, overall and category progress, wiring `ProgressCalculator` into a real controller/view.
+
+### 2026-09-12 — Phase 1, Week 2, Day 8
+
+**Topic:** LINQ, dashboard queries, overall and category progress.
+
+**Problem solved:** Giving `ProgressCalculator` (built test-first on Day 7, never actually shown to a user) a real, visible consumer — a dashboard displaying both an overall progress bar and a per-category breakdown — using LINQ's `GroupBy`/`Select` instead of hand-rolled grouping logic.
+
+**What I learned:** That `GroupBy`'s `Key` is not something authored per-group — it's a real property on the `IGrouping<TKey, TSource>` type LINQ produces, populated automatically from evaluating the grouping lambda (`skill => skill.Category`) against the actual data; groups are discovered from whatever distinct values exist at runtime, so a brand-new category needs zero code changes to appear. Confirmed this concretely: adding a `Testing`-category skill made a new dashboard row appear automatically. Also hit and fixed a real, non-obvious production bug: the server's `tr-TR` culture made `double.ToString()` emit a comma decimal separator, which silently broke inline CSS `width` values (commas aren't valid in CSS numbers) — fixed via `CultureInfo.InvariantCulture`, a case where the *calculation* was correct but the *rendering* wasn't, and only became visible by inspecting real HTML output, not by reasoning about the code.
+
+**What I implemented:**
+* `Domain/CategoryProgress.cs` — a small record pairing a category name with its percentage.
+* `ProgressCalculator.CalculateCategoryProgress`, built test-first (2 new tests, both genuinely red before green): groups skills by `Category`, reuses `CalculateOverallProgress` per group rather than duplicating its edge-case handling.
+* `ProgressCalculator` registered in DI (`AddSingleton`) for the first time — justified today by `DashboardController` being a real consumer, not registered speculatively on Day 7.
+* `Models/DashboardViewModel.cs`, `Controllers/DashboardController.cs`, `Views/Dashboard/Index.cshtml` — a new `/Dashboard` page with Bootstrap progress bars for overall and per-category progress.
+* `_Layout.cshtml` nav updated with "Dashboard" and "Skills" links (the latter had been missing since Day 3).
+
+**Runtime flow:** `GET /Dashboard` → `DashboardController.Index()` → `ISkillCatalog.GetAll()` → `ProgressCalculator.CalculateOverallProgress` and `CalculateCategoryProgress` (the latter internally reusing the former per LINQ-grouped subset) → `DashboardViewModel` → view renders two progress-bar sections. Full trace, including the culture bug and fix, in `docs/daily-code-notes/day-08.md`.
+
+**Verification:**
+* `dotnet test` → 8/8 passing.
+* `dotnet build` → 0 errors, 0 warnings.
+* Hand-calculated expected percentages from live `Skills` data, then confirmed `/Dashboard`'s actual rendered output matched exactly (both before and after the culture fix, catching the comma-vs-period bug directly in the HTML).
+* `GET /`, `GET /Skills` → HTTP 200 (no regression).
+* Independent task: added a new skill (`xUnit`, category `Testing`) via the Create form; `/Dashboard` automatically showed a correctly calculated "Testing" row with zero code changes.
+
+**Evidence:** Working endpoint (`/Dashboard`); passing automated tests; commit (pending); English/Turkish technical explanation (needed a second, more concrete pass on `GroupBy`/`Key` mechanics using the app's actual data before it landed); independent task completed and re-verified.
+
+**Mistakes or difficulties:** Initial explanation of `group.Key`/`GroupBy` was too abstract and didn't land — a concrete walkthrough using the app's real skill/category data (rather than generic examples) was needed. This reinforces a pattern from Day 7: front-load concrete, data-grounded examples for new LINQ/testing syntax rather than assuming the abstract explanation is sufficient the first time.
+
+**Production considerations:** The `CultureInfo.InvariantCulture` fix is a genuinely permanent, production-correct pattern (never format machine-readable values like CSS/JSON/URLs using the server's ambient culture) — not a temporary simplification. `ProgressCalculator` still has no interface; still no real need for one.
+
+**Understanding questions and answers:**
+1. Q: Where does `group.Key` actually come from? A: It's a real property on the `IGrouping<TKey,TSource>` type LINQ produces, set automatically to the value produced by the grouping lambda (`skill.Category`, not `skill.Name`) for that group's members — groups are discovered from the data's actual distinct values, never predefined.
+2. Q: Why does `CalculateCategoryProgress` call `CalculateOverallProgress` again per group instead of writing separate logic? A: A category's progress *is* the same overall-progress formula applied to a smaller subset — duplicating it would duplicate its edge-case handling (÷0 guard, 100% clamp) in two places that could silently drift apart.
+3. Q: Why register `ProgressCalculator` in DI today but not on Day 7? A: Day 7 had no real application-code consumer (only tests, which don't need DI); today `DashboardController` genuinely needs one via constructor injection — the registration followed the real need rather than anticipating it.
+
+**Independent task:** Add a new skill in a brand-new category via the real Create form, hand-calculate its expected dashboard percentage first, then confirm `/Dashboard` shows it correctly with no code changes. Completed and independently verified by Berkan (`xUnit`/`Testing`, 25%); re-verified by Claude via direct SQL query and the running app.
+
+**Next session:** Phase 1, Week 2, Day 9 — requirement mapping, evidence records, logging, seed data, basic error handling.

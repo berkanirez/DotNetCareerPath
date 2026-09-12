@@ -55,7 +55,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | EF Core | 4 | Phase 1–4 | Unit test, integration test, commit | 2 | In Progress |
 | SQL Server | 3 | Phase 1–4 | Working endpoint, debugging note | 2 | In Progress |
 | PostgreSQL | 1 | Phase 4–5 (comparison only) | English technical explanation | 0 | Planned |
-| LINQ | 3 | Phase 1–2 | Unit test, commit | 0 | Planned |
+| LINQ | 3 | Phase 1–2 | Unit test, commit | 2 | In Progress |
 | Async programming | 3 | Phase 2–4 | Unit test, working endpoint | 0 | Planned |
 | REST | 4 | Phase 2 | Working endpoint, API documentation | 0 | Planned |
 | SOAP | 1 | Phase 4 | English technical explanation, working endpoint | 0 | Planned |

@@ -9,6 +9,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddDbContext<RoadmapOSDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("RoadmapOSDb")));
 builder.Services.AddScoped<ISkillCatalog, EfSkillCatalog>();
+builder.Services.AddSingleton<ProgressCalculator>();
 
 var app = builder.Build();
 

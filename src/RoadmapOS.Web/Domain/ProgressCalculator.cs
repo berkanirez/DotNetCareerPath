@@ -27,4 +27,12 @@ public class ProgressCalculator
 
         return Math.Min(100, rawPercentage);
     }
+
+    public IReadOnlyList<CategoryProgress> CalculateCategoryProgress(IReadOnlyList<Skill> skills)
+    {
+        return skills
+            .GroupBy(skill => skill.Category)
+            .Select(group => new CategoryProgress(group.Key, CalculateOverallProgress(group.ToList())))
+            .ToList();
+    }
 }

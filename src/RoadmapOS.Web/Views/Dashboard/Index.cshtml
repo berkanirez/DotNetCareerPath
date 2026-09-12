@@ -1,0 +1,42 @@
+@using System.Globalization
+@model DashboardViewModel
+
+@{
+    ViewData["Title"] = "Dashboard";
+
+    string FormatPercentage(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
+}
+
+<h1>Dashboard</h1>
+
+<h2>Overall Progress</h2>
+<div class="progress mb-4" style="height: 25px;">
+    <div class="progress-bar" role="progressbar" style="width: @(FormatPercentage(Model.OverallProgress))%;">
+        @FormatPercentage(Model.OverallProgress)%
+    </div>
+</div>
+
+<h2>Progress by Category</h2>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Category</th>
+            <th>Progress</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var category in Model.CategoryProgress)
+        {
+            <tr>
+                <td>@category.Category</td>
+                <td>
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar" role="progressbar" style="width: @(FormatPercentage(category.Percentage))%;">
+                            @FormatPercentage(category.Percentage)%
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
