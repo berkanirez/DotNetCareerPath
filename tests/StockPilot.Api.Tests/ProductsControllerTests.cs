@@ -127,4 +127,31 @@ public class ProductsControllerTests
         Assert.Single(page.Items);
         Assert.Equal("Wireless Mouse", page.Items[0].Name);
     }
+
+    [Fact]
+    public async Task Create_DuplicateSku_ReturnsConflict()
+    {
+        // Uses InMemoryProductStore, so this only exercises Layer 1 (the
+        // proactive SkuExistsAsync check) — it can never reach Layer 2's
+        // DbUpdateException catch, since InMemoryProductStore never throws one.
+        var controller = CreateController();
+
+        var duplicateRequest = new CreateProductRequest("SKU-001", "Another Mouse", 25.00m);
+        var result = await controller.Create(duplicateRequest);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task Create_NonDuplicateSku_StillSucceeds()
+    {
+        var controller = CreateController();
+
+        var request = new CreateProductRequest("SKU-010", "New Product", 30.00m);
+        var result = await controller.Create(request);
+
+        var created = Assert.IsType<CreatedAtActionResult>(result.Result);
+        var dto = Assert.IsType<ProductDto>(created.Value);
+        Assert.Equal("SKU-010", dto.Sku);
+    }
 }

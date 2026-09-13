@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using StockPilot.Api.Models;
 
 namespace StockPilot.Api.Controllers;
@@ -63,8 +64,26 @@ public class ProductsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ProductDto>> Create(CreateProductRequest request, CancellationToken cancellationToken = default)
     {
+        // Layer 1 (proactive): the common case — reject an obvious duplicate
+        // before ever touching the database's write path.
+        if (await _productStore.SkuExistsAsync(request.Sku, cancellationToken))
+        {
+            return Conflict($"A product with SKU '{request.Sku}' already exists.");
+        }
+
         var product = new Product(request.Sku, request.Name, request.Price);
-        await _productStore.AddAsync(product, cancellationToken);
+
+        try
+        {
+            await _productStore.AddAsync(product, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Layer 2 (reactive safety net): a rare race — two concurrent
+            // requests both passed the check above before either committed.
+            // The database's own unique index is the final authority.
+            return Conflict($"A product with SKU '{request.Sku}' already exists.");
+        }
 
         var dto = ToDto(product);
         return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);

@@ -32,6 +32,19 @@ public class InMemoryProductStore : IProductStore
         return Task.FromResult<Product?>(null);
     }
 
+    public Task<bool> SkuExistsAsync(string sku, CancellationToken cancellationToken = default)
+    {
+        foreach (var product in _products)
+        {
+            if (product.Sku == sku)
+            {
+                return Task.FromResult(true);
+            }
+        }
+
+        return Task.FromResult(false);
+    }
+
     public Task<Product> AddAsync(Product product, CancellationToken cancellationToken = default)
     {
         product.Id = _nextId++;

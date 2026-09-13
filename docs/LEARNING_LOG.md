@@ -697,3 +697,39 @@ Copy this template for each new entry:
 **Independent task:** Write a test for the `search` filter. Completed (IDE-suggested, then explained and verified line-by-line by Berkan rather than accepted blindly); re-verified by Claude (9/9 passing).
 
 **Next session:** Phase 2, Week 4, Day 18 (Wednesday — persistence/infrastructure) — database constraints and SQL indexes, most likely a unique index on `Product.Sku`.
+
+### 2026-09-13 — Phase 2, Week 4, Day 18
+
+**Topic:** Database constraints and SQL indexes — a unique index on `Product.Sku`.
+
+**Problem solved:** Nothing prevented two products from sharing the same SKU — a real business-rule violation. Added a unique index at the database level, proved it live two ways, and honestly documented (without fixing) a resulting gap in how the API currently reports the failure.
+
+**What I learned:** A unique index protects data integrity regardless of *how* data arrives — proved this concretely by rejecting a duplicate SKU via a raw SQL `INSERT` that bypassed the application entirely, the same way Day 6's FK/length constraints were proven in RoadmapOS. Went further via a follow-up question into the concurrent-request angle: an application-level "check then insert" guard (`if` before `Add`) can still race — two simultaneous requests could both pass the check before either commits, something only a real database-level constraint reliably prevents regardless of timing. Also confirmed live that the current unhandled-`DbUpdateException` path surfaces a duplicate SKU as an incorrect `500` (server-fault semantics) rather than the correct `409 Conflict` (client-fault semantics) — a real, deliberately unfixed gap for a future session, mirroring the same "prove the constraint now, add graceful handling later" sequencing RoadmapOS used on Day 6.
+
+**What I implemented:**
+* Pre-check (direct SQL) confirming no existing duplicate SKUs before adding the constraint.
+* `StockPilotDbContext`: `entity.HasIndex(p => p.Sku).IsUnique();`.
+* `AddUniqueSkuIndex` migration, created and applied.
+
+**Runtime flow:** `POST /api/products` (duplicate SKU) → `EfProductStore.AddAsync` → `SaveChangesAsync()` → SQL Server rejects the `INSERT` (unique index violation) → EF Core wraps this as `DbUpdateException` → uncaught, so `UseExceptionHandler()`/`AddProblemDetails()` (Day 13) format it as a generic 500. Full trace, including both live tests, in `docs/daily-code-notes/day-18.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 9/9 passing (no regression from the schema change).
+* Direct SQL duplicate insert → rejected, exact SQL Server error message captured.
+* Real `POST` with a duplicate SKU → HTTP 500 with a clean (but wrongly-coded) `ProblemDetails` body; confirmed via direct SQL query that no duplicate row was actually created despite the ugly response.
+* Independent task: a new, non-conflicting SKU (`SKU-009`) inserted successfully, confirming the constraint only blocks true duplicates.
+
+**Evidence:** A real, live-proven database constraint (two independent verification methods); an honestly-documented, deliberately-deferred gap rather than a silently-ignored one; commit (`38585b4`); English/Turkish technical explanation (index rationale, the concurrent-request angle, correct HTTP status semantics); independent task completed and re-verified.
+
+**Mistakes or difficulties:** None blocking. The first answer to "why a DB-level constraint over an app-level check" only covered the direct-bypass angle (correct but partial) — the concurrent-request/race-condition angle needed to be added explicitly.
+
+**Production considerations:** The current 500-instead-of-409 behavior for duplicate SKUs is a known, tracked gap (see Day 19's planned scope) — not silently accepted as "done," and the database itself never allowed the bad data through regardless of how badly the API reported it.
+
+**Understanding questions and answers:**
+1. Q: What's the concrete benefit of a DB-level constraint over an app-level check? A: Two things — it can't be bypassed by anything writing directly to the database (proven live), and it can't race the way a "check then insert" app-level guard can under concurrent requests.
+2. Q: Why is the current 500 the wrong status code? A: 500 means "unexpected server-side fault"; this was actually an expected, client-caused conflict — the correct code is 409 Conflict.
+3. Q: Why is deferring the graceful-handling fix a deliberate choice, not a shortcoming? A: Today's actual objective (proving the constraint works) was completed fully and correctly; conflating it with building proper error translation in the same session would have left both halves half-finished instead of one thing finished well — the same sequencing RoadmapOS used on Day 6.
+
+**Independent task:** Add a new, non-conflicting SKU and confirm it succeeds normally. Completed and independently verified by Berkan (`SKU-009`); re-verified by Claude via direct SQL query.
+
+**Next session:** Phase 2, Week 4, Day 19 (Thursday — tests, failures, production considerations) — close the 500→409 gap left open today, with a test proving the fix.

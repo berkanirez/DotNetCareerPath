@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 17 (complete)
+* **Day:** 19 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** `IProductStore`, both implementations, and `ProductsController` converted to `async`/`await` with `CancellationToken` threaded through to EF Core; behavior unchanged, verified live; 9/9 tests passing (8 converted + 1 independent).
+* **Status:** Day 18's 500→409 gap closed with a two-layer defense (proactive `SkuExistsAsync` check + reactive `DbUpdateException` catch); verified live and via 11/11 passing tests (2 new).
 * **Available study time:** 2 hours/day
-* **Progress:** ~16% (Day 17 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~18% (Day 19 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -142,7 +142,19 @@ This file reflects the actual current state of the learning journey. It must alw
 * All 8 existing tests converted to `async Task`; full HTTP regression confirmed identical behavior to the synchronous version.
 * `docs/daily-code-notes/day-17.md` created (Turkish).
 * Independent task completed and verified: a new test (`GetBySearch_ReturnsMatchingProducts`, IDE-suggested but explained line-by-line afterward) confirming the `search` filter returns exactly one matching product; 9/9 tests passing.
-* Day 17 changes not yet committed (pending Berkan's confirmation).
+* Day 17 changes committed and pushed by Berkan (`d1bfff7`).
+* Pre-check performed before adding the constraint: confirmed no existing duplicate SKUs in the live database (a real "verify before migrating" step).
+* `StockPilotDbContext`: `entity.HasIndex(p => p.Sku).IsUnique();` added; `AddUniqueSkuIndex` migration created and applied.
+* Live proof, two ways: a direct SQL `INSERT` of a duplicate SKU was rejected by SQL Server; a real `POST` with a duplicate SKU via the API was also rejected, but surfaced as an (incorrect) HTTP 500 rather than 409 Conflict — deliberately left unfixed today, mirroring RoadmapOS Day 6's "prove the constraint, defer graceful handling" pattern; database integrity confirmed intact after both attempts (still exactly one `SKU-001` row).
+* `docs/daily-code-notes/day-18.md` created (Turkish).
+* Independent task completed and verified: a new, non-conflicting SKU (`SKU-009`, id 10) added successfully, confirming the constraint only blocks duplicates, not normal inserts.
+* Day 18 changes committed and pushed by Berkan (`38585b4`).
+* `IProductStore.SkuExistsAsync` added (both implementations); `ProductsController.Create` now does a proactive existence check (Layer 1) plus a `try`/`catch (DbUpdateException)` safety net (Layer 2) for the rare concurrent-request race, returning `Conflict(...)` (409) from either layer instead of letting a 500 through.
+* Honestly scoped: only Layer 1 is covered by an automated test (`InMemoryProductStore` never throws `DbUpdateException`, so Layer 2 can't be reached from a unit test) — Layer 2 is trusted based on Day 18's already-observed EF Core/SQL Server behavior, not independently verified today.
+* Live verification: duplicate SKU via `POST` → HTTP 409 with a clear message; a fresh SKU → still HTTP 201.
+* `docs/daily-code-notes/day-19.md` created (Turkish).
+* Independent task completed and verified: a new regression test (`Create_NonDuplicateSku_StillSucceeds`) confirming the new checks don't affect normal, non-duplicate creates; 11/11 tests passing.
+* Day 19 changes not yet committed (pending Berkan's confirmation).
 
 ## Decisions on record
 
@@ -168,12 +180,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 4, Day 18 (Wednesday — persistence/infrastructure): database constraints and SQL indexes — most likely a unique constraint/index on `Product.Sku` (a real business rule: no two products should share a SKU), verified live by attempting a duplicate insert and confirming SQL Server rejects it. Remaining Week 4 topics after this: transactions, optimistic concurrency, query analysis, stock-reservation rules.
+2. Begin Phase 2, Week 4, Day 19 (Thursday — tests, failures, production considerations): close the gap deliberately left open on Day 18 — `Create` should catch the duplicate-SKU failure and return `409 Conflict` instead of a raw 500, with a test proving it. Time permitting, this is also the natural day to touch transactions/optimistic concurrency (still unscoped from Week 4's list); exact scope to be finalized in the day's plan.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 4 / Day 18 expected outcome
+## Week 4 / Day 19 expected outcome
 
-* A unique index on `Product.Sku` (Fluent API `HasIndex(...).IsUnique()`), migrated and applied.
-* Live proof: inserting a duplicate SKU (via raw SQL or the API) is rejected by SQL Server, not just by application-level validation.
-* A decision on how `Create` should surface this failure to API clients (likely a 409 Conflict or a validation-style error, to be scoped in the day's plan).
+* `Create` returns `409 Conflict` (not 500) for a duplicate SKU, with a clear error body.
+* A test proving this behavior (likely requiring a real EF Core exception to be triggered/caught, or an in-memory equivalent check — to be decided in the day's plan).
+* Remaining Week 4 topics after this: transactions, optimistic concurrency, query analysis, stock-reservation rules (Friday close-out likely covers whichever is left).
 

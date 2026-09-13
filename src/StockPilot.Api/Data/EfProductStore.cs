@@ -22,6 +22,11 @@ public class EfProductStore : IProductStore
         return await _context.Products.FindAsync([id], cancellationToken);
     }
 
+    public async Task<bool> SkuExistsAsync(string sku, CancellationToken cancellationToken = default)
+    {
+        return await _context.Products.AnyAsync(p => p.Sku == sku, cancellationToken);
+    }
+
     public async Task<Product> AddAsync(Product product, CancellationToken cancellationToken = default)
     {
         _context.Products.Add(product);
