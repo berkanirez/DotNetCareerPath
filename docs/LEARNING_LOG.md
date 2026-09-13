@@ -470,3 +470,79 @@ Copy this template for each new entry:
 **Independent task:** Add `GetById(int id)` returning `Ok(product)` or `NotFound()`. Completed and independently verified by Berkan (curl-tested against both a valid and invalid ID); re-verified by Claude, which also surfaced the `ProblemDetails` auto-formatting behavior.
 
 **Next session:** Phase 2, Week 3, Day 12 (Tuesday — happy-path implementation) — extend StockPilot with write operations (Create at minimum), manual DTO↔entity mapping, and correct status codes for writes.
+
+### 2026-09-13 — Phase 2, Week 3, Day 12
+
+**Topic:** `POST` write operations, 201 Created + Location header, domain/DTO separation, manual mapping.
+
+**Problem solved:** Day 11 had conflated "the data itself" and "the API's response shape" into one `ProductDto`; today split them into `Product` (domain, server-assigned `Id`) and `CreateProductRequest` (input contract), then implemented `Create` correctly per REST convention (201 + Location, not just 200), plus a `Delete` independent task.
+
+**What I learned:** Why `new ProductDto(product)` can't work as written — a record's primary constructor expects the exact parameter list declared (`int, string, string, decimal`), not a single `Product` object; C# has no automatic "unpack an object's properties into another constructor" behavior, which is exactly the gap `ToDto` fills; why `Products.Select(ProductDto)` fails (`CS0119`, confirmed live by deliberately triggering it) — `ProductDto` is a type name, not a callable method, and `.Select` needs an actual method/lambda; `CreatedAtAction`'s three jobs at once (201 status, `Location` header pointing at `GetById`, and the created resource in the body); that a DELETE request can't be tested via a browser address bar (GET-only) — curl with `-X DELETE` is required.
+
+**What I implemented:**
+* `Models/Product.cs` (domain) and `Models/CreateProductRequest.cs` (input DTO), splitting Day 11's single `ProductDto`.
+* `ProductsController.Create` — `CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto)`.
+* Private `ToDto(Product)` mapping helper; `GetAll`/`GetById` updated to use it.
+* `_nextId++` explicitly flagged as a known, non-thread-safe simplification (comment in code), deferred to Week 4's EF Core/IDENTITY replacement rather than fixed today.
+* Independent task: `Delete(int id)` (`[HttpDelete("{id}")]`), `NoContent()`/`NotFound()`.
+
+**Runtime flow:** `POST /api/products` → model binder builds a `CreateProductRequest` → a new `Product` is constructed and assigned an in-memory ID → `ToDto` maps it → `CreatedAtAction` produces 201 + a real `Location` URL pointing at `GetById`. Full trace, including the deliberate `CS0119` demonstration, in `docs/daily-code-notes/day-12.md`.
+
+**Verification:**
+* `dotnet build` → 0 errors, 0 warnings.
+* `POST /api/products` → HTTP 201, `Location: .../api/Products/4`, correct body; following that exact `Location` with `GET` → HTTP 200, same resource; `GET /api/products` → 4 items.
+* Deliberately broke the build (`Select(ProductDto)`) to show `CS0119` live, then reverted — build clean again.
+* `DELETE /api/products/2` → HTTP 204; `DELETE /api/products/999` → HTTP 404; follow-up `GET /api/products` confirmed product 2 actually gone.
+
+**Evidence:** Working endpoints (`Create`, `Delete`); commit (`72fb9d2`); English/Turkish technical explanation (needed two passes on `ToDto`'s purpose — a concrete "fridge/sandwich" analogy plus a live compiler error landed it after a first, too-abstract explanation didn't); independent task completed and re-verified.
+
+**Mistakes or difficulties:** The first explanation of why `ToDto` is needed (framed around "method group" terminology) didn't land at all — a live, concrete compiler error plus a plain-language analogy was needed instead. Worth defaulting to "show the actual error first, explain after" for this kind of type-system question going forward, rather than leading with abstract terminology.
+
+**Production considerations:** `_nextId++`'s thread-safety gap is real but inert today (no concurrent traffic); explicitly documented rather than silently accepted, and will disappear naturally once Week 4 replaces the in-memory list with SQL Server.
+
+**Understanding questions and answers:**
+1. Q: What would the client have to do without a `Location` header? A: Guess/hard-code the URL pattern themselves from the `id` in the response body, instead of being told exactly where the new resource lives.
+2. Q: Why keep `CreateProductRequest` and `ProductDto` separate despite looking nearly identical today? A: They'll diverge — a future server-computed field on `ProductDto` (e.g. a timestamp) would otherwise leak into what `Create` accepts from a client, the same over-posting risk from RoadmapOS Day 5.
+3. Q: Why is `_nextId++`'s non-atomicity harmless today but a real risk in production? A: No concurrent requests are actually racing today (sequential curl calls); real concurrent traffic could interleave the read-increment-write sequence and hand two different creates the same ID.
+
+**Independent task:** Add `Delete(int id)` returning `NoContent()`/`NotFound()`. Completed and independently verified by Berkan; re-verified by Claude via curl (valid ID → 204, invalid → 404, confirmed removal via a follow-up `GetAll`).
+
+**Next session:** Phase 2, Week 3, Day 13 (Wednesday — persistence/infrastructure slot) — likely validation on `CreateProductRequest` and/or ProblemDetails/global error handling, since EF Core persistence itself is Week 4's topic.
+
+### 2026-09-13 — Phase 2, Week 3, Day 13
+
+**Topic:** Validation, `[ApiController]`'s automatic behavior, global error handling.
+
+**Problem solved:** Adding real input validation to `CreateProductRequest` without writing any manual `if (!ModelState.IsValid)` checks, and closing a real gap: an unhandled exception had never been tested, so it was unknown whether the API leaked a raw stack trace or returned something safe.
+
+**What I learned:** Rather than trusting uncertain memory about whether DataAnnotations need a `[property:]` target specifier on positional record parameters, tested it live first — confirmed plain `[Required]`/`[StringLength]`/`[Range]` (no explicit target) work correctly with .NET 10's model validation; `[ApiController]` automatically short-circuits an action and returns 400 + `ValidationProblemDetails` the moment model validation fails, with zero custom code; `AddProblemDetails()` + `UseExceptionHandler()` intercept *any* unhandled exception and return a clean, safe JSON body — confirmed by literally disabling both and observing the alternative: a raw `text/plain` C# stack trace including file paths and ASP.NET Core's internal call chain, a genuine information-disclosure risk, not just an ugly response.
+
+**What I implemented:**
+* `CreateProductRequest`: `[Required, StringLength(50)]` (Sku), `[Required, StringLength(200)]` (Name), `[Range(0.01, double.MaxValue)]` (Price).
+* `Program.cs`: `builder.Services.AddProblemDetails()` + `app.UseExceptionHandler()`.
+* Two deliberate, reverted experiments: a temporary throw in `GetAll()` (to observe the 500 response, with and without the two lines above), and a temporary `[property:]`-less vs. hypothetically-targeted comparison (resolved by direct testing rather than by adding speculative code).
+
+**Runtime flow:** Invalid `POST` body → model binder populates `CreateProductRequest` → DataAnnotations run against the bound model → `[ApiController]` sees `ModelState` is invalid and short-circuits before the action method body runs at all → 400 + `ValidationProblemDetails`. Unhandled exception → `UseExceptionHandler()` middleware catches it → `AddProblemDetails()`-configured formatting → 500 + clean `ProblemDetails`. Full transcript (both the "with" and "without" versions) in `docs/daily-code-notes/day-13.md`.
+
+**Verification:**
+* `dotnet build` → 0 errors, 0 warnings.
+* Empty `Sku`, over-length `Sku`, negative `Price` → each correctly HTTP 400 with a field-specific message (noticed the `Price` range message rendered with a Turkish decimal comma — flagged, not fixed).
+* Temporary throw, handler enabled → HTTP 500, clean `ProblemDetails` JSON.
+* Temporary throw, handler disabled → HTTP 500, raw stack trace (`text/plain`) — confirmed live, not assumed.
+* Full regression after reverting both experiments: `GetAll`/`GetById`/`Create`/`Delete`/invalid-`Create` all unchanged.
+* Independent task: `[MinLength(2)]` added to `Sku`; single-character SKU → 400, two-character → 201.
+
+**Evidence:** Working, verified validation and error-handling behavior (both directions demonstrated live); commit (pending); English/Turkish technical explanation; independent task completed and re-verified.
+
+**Mistakes or difficulties:** None blocking. Good discipline moment: rather than asserting from memory whether record positional-parameter attributes need `[property:]` targeting, the uncertainty was tested directly instead of guessed at — the roadmap's "don't claim behavior works without verification" rule applied to Claude's own uncertain recollection, not just to Berkan's code.
+
+**Production considerations:** The Turkish-culture validation message issue (comma decimals) is now noticed twice (Day 8's CSS bug, today's error message) — a real candidate for a future "pin the server to a fixed culture" fix, not yet scheduled. Global error handling isn't yet paired with logging (Day 9's `ILogger` pattern would be the natural next step, not done today).
+
+**Understanding questions and answers:**
+1. Q: What does testing (vs. assuming) tell us in ambiguous cases? A: That we should verify uncertain behavior directly rather than trust possibly-outdated or fuzzy recollection — demonstrated concretely today.
+2. Q: How does `[ApiController]`'s automatic validation differ from RoadmapOS's manual `if (!ModelState.IsValid)`? A: The same underlying check, but triggered automatically via an attribute — no code written, action body never even runs on an invalid model.
+3. Q: What would an unhandled exception actually return without `AddProblemDetails()`/`UseExceptionHandler()`? A: A raw, unformatted `text/plain` stack trace — shown live, including file paths and internal framework call frames.
+
+**Independent task:** Add one more validation rule to `CreateProductRequest` and verify it live. Completed and independently verified by Berkan (`[MinLength(2)]` on `Sku`); re-verified by Claude.
+
+**Next session:** Phase 2, Week 3, Day 14 (Thursday — tests, failures, production considerations) — a `StockPilot.Api.Tests` project, first tests (mapping/validation), more failure-case coverage.

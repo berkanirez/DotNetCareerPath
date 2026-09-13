@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 11 (complete) — first day of Phase 2
+* **Day:** 13 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** StockPilot project scaffolded (controller-based Web API, own solution); first vertical slice (`ProductsController` with `GetAll`/`GetById`) working, including a discovered-live `ProblemDetails` auto-formatting behavior on `NotFound()`.
+* **Status:** Validation added to `CreateProductRequest`; `[ApiController]`'s automatic 400/`ValidationProblemDetails` confirmed live; global exception handling (`AddProblemDetails`/`UseExceptionHandler`) added and verified both with and without it (raw stack trace vs. clean ProblemDetails).
 * **Available study time:** 2 hours/day
-* **Progress:** ~10% (Day 11 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~12% (Day 13 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -96,6 +96,22 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-11.md` created (Turkish).
 * Independent task completed and verified: `GetById(int id)` added, returns `Ok(product)` or `NotFound()` correctly for both a valid and an invalid ID.
 * Day 11 changes committed and pushed by Berkan (`0f87acb`).
+* `Models/Product.cs` (domain, mutable, server-assigned `Id`) and `Models/CreateProductRequest.cs` (input DTO) added, splitting what Day 11 had conflated into one `ProductDto`.
+* `ProductsController.Create` added — `CreatedAtAction(nameof(GetById), ...)` returning 201 + `Location` header, verified live (`POST` → 201 + Location → `GET` on that exact Location → same resource, 200).
+* A private `ToDto(Product)` mapping helper introduced; `GetAll`/`GetById` updated to use it — manual mapping, no AutoMapper.
+* `_nextId++`'s non-thread-safety flagged explicitly as a known, deliberate simplification (superseded by SQL Server IDENTITY in Week 4), not silently ignored.
+* A live compiler-error demonstration was used to answer a follow-up question: temporarily tried `Products.Select(ProductDto)` (a type name, not a method) to show `CS0119` directly, then reverted to `Select(ToDto)`.
+* Independent task completed and verified: `Delete(int id)` added (`[HttpDelete("{id}")]`, `NoContent()`/`NotFound()`), tested live for both a valid and invalid ID — confirmed a DELETE request cannot be tested via a browser address bar (GET-only), curl (`-X DELETE`) used instead.
+* `docs/daily-code-notes/day-12.md` created (Turkish).
+* Day 12 changes committed and pushed by Berkan (`72fb9d2`).
+* `CreateProductRequest` gained `[Required]`/`[StringLength]`/`[Range]` on positional record parameters; deliberately tested live *without* a `[property:]` target first (uncertain from memory whether needed) rather than assuming — confirmed it works as-is on .NET 10's validation pipeline.
+* Confirmed live: invalid `Create` payloads (empty/too-long `Sku`, out-of-range `Price`) get an automatic 400 + `ValidationProblemDetails` from `[ApiController]`, with zero `if (!ModelState.IsValid)` code written.
+* Noticed (not fixed): validation error messages carry the server's `tr-TR` culture too (e.g. "0,01" with a comma) — same class of issue as Day 8's CSS bug, out of scope today.
+* `Program.cs`: `AddProblemDetails()` + `UseExceptionHandler()` added for global error handling.
+* Verified live, twice: a temporary unhandled `throw` in `GetAll()` returns a clean `ProblemDetails` 500 with these enabled; with them deliberately disabled, the same throw returns a raw `text/plain` C# stack trace (file paths, internal ASP.NET Core call chain) — a genuine security-relevant difference, not just cosmetic.
+* Full regression check after removing the temporary throw: `GetAll`/`GetById`/`Create`/`Delete`/invalid-`Create` all still correct.
+* Independent task completed and verified: added `[MinLength(2)]` to `Sku`, confirmed a single-character SKU is rejected (400) and a two-character one is accepted (201).
+* `docs/daily-code-notes/day-13.md` created (Turkish), including both the "with" and "without" global-error-handling transcripts.
 
 ## Decisions on record
 
@@ -121,12 +137,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 3, Day 12 (Tuesday of the weekly rhythm — "happy-path implementation"): extend `StockPilot.Api` past the single read-only `ProductsController` slice — likely candidates from Week 3's topic list: POST/PUT actions, manual DTO mapping for writes, and/or beginning the `Order`/`Warehouse` domain. Exact scope to be finalized in that day's plan.
+2. Begin Phase 2, Week 3, Day 14 (Thursday of the weekly rhythm — "tests, failures and production considerations"): likely a `StockPilot.Api.Tests` xUnit project (mirroring RoadmapOS Day 7), testing `ToDto` mapping and/or validation rules directly, plus more deliberate failure-case coverage. Exact scope to be finalized in that day's plan.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 3 / Day 12 expected outcome
+## Week 3 / Day 14 expected outcome
 
-* Happy-path write operations (Create at minimum) added to StockPilot, with manual DTO↔entity mapping (no AutoMapper, per `CLAUDE.md`).
-* Correct HTTP status codes for writes (201 Created with a Location header, or similar, matching REST conventions not yet covered).
-* No database yet — still in-memory, per the Week 3 pacing (EF Core arrives Week 4).
+* A test project for StockPilot, first tests written (mapping and/or validation logic).
+* Additional failure scenarios considered and verified.
+* Still in-memory — EF Core arrives Week 4.
 
