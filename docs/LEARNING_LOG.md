@@ -433,3 +433,40 @@ Copy this template for each new entry:
 **RoadmapOS V1 is released.** Phase 1 is complete.
 
 **Next session:** Phase 2, Week 3, Day 11 — begin StockPilot Inventory and Order API (project setup + first vertical slice, scoped from Week 3's weekly topic list since Phase 2 isn't broken into daily topics like Phase 1 was).
+
+### 2026-09-13 — Phase 2, Week 3, Day 11 (StockPilot begins)
+
+**Topic:** StockPilot Inventory and Order API kickoff — project setup, controller-based Web API, HTTP status codes, first vertical slice.
+
+**Problem solved:** Starting a genuinely new product (not an extension of RoadmapOS) with its own solution, establishing the MVC-vs-Web-API distinction concretely (no views, JSON responses, explicit status codes), and catching two real discrepancies between plan and reality on the very first day rather than glossing over them.
+
+**What I learned:** `dotnet new webapi` now defaults to Minimal API scaffolding in current .NET versions — `--use-controllers` is required to get the controller-based style `CLAUDE.md` mandates; attribute routing (`[Route]`, `[HttpGet("{id}")]`) exists specifically so multiple actions can share one clean, resource-oriented URL (`api/products/{id}`) distinguished only by HTTP verb — something convention routing's `{controller}/{action}` pattern can't do, since it always bakes the action name into the URL; `[ApiController]` automatically formats results like `NotFound()` as RFC 9110-compliant `ProblemDetails` JSON with zero extra code — discovered live, not read about; `ActionResult<T>` vs. `IReadOnlyList<T>` come from different namespaces (`Microsoft.AspNetCore.Mvc`, explicitly imported, vs. `System.Collections.Generic`, covered by `ImplicitUsings`) — a concrete instance of Day 1's implicit-usings concept.
+
+**What I implemented:**
+* `StockPilot.slnx` — a new, separate solution from `RoadmapOS.slnx`.
+* `src/StockPilot.Api` scaffolded via `dotnet new webapi --use-controllers`; default `WeatherForecast` sample removed.
+* Caught and fixed a real `NU1903` security advisory in the auto-generated `Microsoft.OpenApi` 2.0.0 dependency by upgrading `Microsoft.AspNetCore.OpenApi` to 10.0.11.
+* `Models/ProductDto.cs`, `Controllers/ProductsController.cs` — `GetAll()` and (independent task) `GetById(int id)`, in-memory data, `Ok(...)`/`NotFound()`.
+
+**Runtime flow:** `GET /api/products/{id}` → Kestrel → middleware → attribute-routed to `ProductsController.GetById` (no view, no `_Layout` — a genuine architectural difference from every RoadmapOS request) → `Ok(product)` or `NotFound()` → JSON serialized directly to the response body. Full trace in `docs/daily-code-notes/day-11.md`.
+
+**Verification:**
+* `dotnet build` → 0 errors, 0 warnings (including the resolved security advisory).
+* `GET /api/products` → HTTP 200, correct JSON array.
+* `GET /api/products/2` → HTTP 200, correct single product; `GET /api/products/999` → HTTP 404 with an auto-generated `ProblemDetails` body.
+* `GET /openapi/v1.json` → HTTP 200 (raw schema, not an interactive UI — corrected from the day's original plan, which had assumed a Swagger UI would be present by default).
+
+**Evidence:** Working, verified endpoints (`GetAll`, `GetById`); commit (`0f87acb`); English/Turkish technical explanation (routing philosophy, `ActionResult<T>`'s purpose, namespace origins); independent task completed and re-verified.
+
+**Mistakes or difficulties:** Two assumptions in the day's plan didn't survive contact with the actual current .NET tooling: the default `webapi` template no longer includes Swagger UI (just raw OpenAPI JSON), and its default package reference carried a known vulnerability. Both were caught by actually running the commands and reading their output, rather than assuming template output matches older documentation/tutorials — a good reminder that "the template will just work" is not itself verification.
+
+**Production considerations:** In-memory data only — Week 4 introduces EF Core for this project. No authentication yet (Week 5). No interactive API documentation UI yet (would need an additional package, not justified for today's single endpoint).
+
+**Understanding questions and answers:**
+1. Q: Why doesn't `ProductsController` need view support? A: It's a controller-based Web API returning JSON, not HTML — there's nothing for a view engine to render.
+2. Q: How does attribute routing fundamentally differ from RoadmapOS's convention routing, not just mechanically? A: Convention routing always embeds the action name in the URL itself (`/Skills/Edit/5`); attribute routing lets multiple actions share one clean, resource-oriented URL (`api/products/{id}`), distinguished purely by HTTP verb — which is what REST's "URL identifies a resource, HTTP verb identifies the operation" model actually requires.
+3. Q: Why `ActionResult<T>` instead of returning `T` directly? A: It lets one action return either real data (`Ok(product)`) or a non-`T` HTTP result (`NotFound()`) from the same method — a plain `T` return type couldn't compile a `NotFound()` return at all.
+
+**Independent task:** Add `GetById(int id)` returning `Ok(product)` or `NotFound()`. Completed and independently verified by Berkan (curl-tested against both a valid and invalid ID); re-verified by Claude, which also surfaced the `ProblemDetails` auto-formatting behavior.
+
+**Next session:** Phase 2, Week 3, Day 12 (Tuesday — happy-path implementation) — extend StockPilot with write operations (Create at minimum), manual DTO↔entity mapping, and correct status codes for writes.

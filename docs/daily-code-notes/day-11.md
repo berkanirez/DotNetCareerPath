@@ -95,13 +95,46 @@ public class ProductsController : ControllerBase
 
 ---
 
+## 6. Bağımsız görev — `GetById` ve beklenmedik bir keşif
+
+```csharp
+[HttpGet("{id}")]
+public ActionResult<ProductDto> GetById(int id)
+{
+    var product = Products.FirstOrDefault(p => p.Id == id);
+    if (product == null)
+    {
+        return NotFound();
+    }
+    return Ok(product);
+}
+```
+
+Bu, Day 5'teki `SkillsController.Edit`'in `NotFound()` deseniyle birebir aynı mantık — `[HttpGet("{id}")]`, `[HttpGet]` ile **aynı temel route'u** (`api/products`) paylaşıyor, ikisi arasındaki fark sadece "id var mı yok mu" (Soru 2'de konuştuğumuz, attribute routing'in URL'e action adı gömmeden çalışabilmesinin tam kanıtı).
+
+**Beklenmedik keşif:** `NotFound()` çağrıldığında dönen gerçek JSON:
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+  "title": "Not Found",
+  "status": 404,
+  "traceId": "00-1eed5daef059be72f9d1a57eed4f2255-6b50f5d6a83c5192-00"
+}
+```
+Bunu **hiç kod yazmadan** aldık — `[ApiController]` attribute'u, `NotFound()` gibi hata sonuçlarını otomatik olarak standart bir **ProblemDetails** formatına (RFC 9110 uyumlu, `type`/`title`/`status`/`traceId` alanları) çeviriyor. Bu, Week 3'ün ileride resmi olarak işleyeceğimiz "ProblemDetails" konusunun canlı bir ön izlemesi — RoadmapOS'ta `NotFound()` sadece boş bir 404 sayfası veriyordu, API'de ise otomatik olarak yapılandırılmış, makine-okunabilir bir hata gövdesi geliyor.
+
+---
+
 ## Doğrulanan davranış
 
 ```
 dotnet build (StockPilot.Api) → 0 Hata, 0 Uyarı (güvenlik uyarısı dahil düzeltildi)
 
-GET /api/products → HTTP 200
+GET /api/products    → HTTP 200
 [{"id":1,"sku":"SKU-001","name":"Wireless Mouse","price":19.99}, ...]
+
+GET /api/products/2  → HTTP 200, {"id":2,"sku":"SKU-002",...}
+GET /api/products/999 → HTTP 404, otomatik ProblemDetails JSON'u
 
 GET /openapi/v1.json → HTTP 200 (ham OpenAPI şeması, interaktif UI değil)
 ```

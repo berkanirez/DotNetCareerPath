@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 10 (complete) — **RoadmapOS V1 released, Phase 1 complete**
-* **Active project:** StockPilot Inventory and Order API (Phase 2 starting)
-* **Status:** All 7 items of Phase 1's completion gate confirmed (see `docs/daily-code-notes/day-10.md` for the full table). Berkan explained the MVC request lifecycle and DI/EF Core in his own words, with one correction (DI redirects a dependency to an abstraction/external source, it doesn't remove it).
+* **Day:** 11 (complete) — first day of Phase 2
+* **Active project:** StockPilot Inventory and Order API
+* **Status:** StockPilot project scaffolded (controller-based Web API, own solution); first vertical slice (`ProductsController` with `GetAll`/`GetById`) working, including a discovered-live `ProblemDetails` auto-formatting behavior on `NotFound()`.
 * **Available study time:** 2 hours/day
-* **Progress:** ~9% (Day 10 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~10% (Day 11 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -88,6 +88,14 @@ This file reflects the actual current state of the learning journey. It must alw
 * `README.md` updated: real "how to run RoadmapOS" instructions, a "Known simplifications" section (Berkan added one entry independently), and a corrected "Current status".
 * Phase 1 completion gate (`docs/ROADMAP.md`) checked item by item — all 7 confirmed, see `docs/daily-code-notes/day-10.md` for the table and evidence per item.
 * **RoadmapOS V1 released.**
+* `StockPilot.slnx` created — a separate solution from `RoadmapOS.slnx` (deliberate: different products shouldn't share a solution).
+* `src/StockPilot.Api` scaffolded via `dotnet new webapi --use-controllers` (controller-based, not Minimal API, per `CLAUDE.md`).
+* A known security advisory in the auto-generated `Microsoft.OpenApi` 2.0.0 dependency was caught from a build warning and fixed by upgrading `Microsoft.AspNetCore.OpenApi` to 10.0.11.
+* `Models/ProductDto.cs` and `Controllers/ProductsController.cs` (`GetAll`, `GetById`) — first StockPilot vertical slice, in-memory data, verified via curl (200 for both actions, 404 for a missing ID).
+* Discovered live: `[ApiController]` auto-formats `NotFound()`/similar results as RFC 9110 `ProblemDetails` JSON with no extra code — a preview of Week 3's later "ProblemDetails" topic.
+* `docs/daily-code-notes/day-11.md` created (Turkish).
+* Independent task completed and verified: `GetById(int id)` added, returns `Ok(product)` or `NotFound()` correctly for both a valid and an invalid ID.
+* Day 11 changes committed and pushed by Berkan (`0f87acb`).
 
 ## Decisions on record
 
@@ -106,16 +114,19 @@ This file reflects the actual current state of the learning journey. It must alw
 * .NET 10's `dotnet new sln` produces `.slnx` (new XML solution format) instead of the classic `.sln` — functionally equivalent, noted for future reference.
 * `docs/daily-code-notes/` is a documented exception to the "all documentation stays English" rule: those files are written in Turkish (see `CLAUDE.md`).
 * Local dev database engine: SQL Server 2022 Express, instance `localhost\SQLEXPRESS`, Windows Authentication (no SQL login/password in use).
+* StockPilot lives in the same `DotNetCareerPath` workspace but its own solution (`StockPilot.slnx`), separate from `RoadmapOS.slnx` — different products shouldn't share a solution file.
+* StockPilot uses controller-based Web API (`dotnet new webapi --use-controllers`), not Minimal API, per `CLAUDE.md`'s engineering rules.
+* .NET 10's default `webapi` template ships Microsoft's built-in `AddOpenApi()`/`MapOpenApi()` (a raw OpenAPI JSON schema at `/openapi/v1.json`), not an interactive Swagger UI — that would require an additional package (Swashbuckle's UI layer or similar), not added yet since it wasn't needed for today's verification.
 
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 3, Day 11: kick off **StockPilot Inventory and Order API**. `docs/ROADMAP.md`'s Week 3 is described at the weekly level (controller-based REST API, HTTP methods/status codes, DTOs, manual mapping, validation, Swagger/OpenAPI, ProblemDetails, global error handling, pagination/filtering/sorting) rather than broken into daily topics like Phase 1 — the Day 11 plan needs to scope a first vertical slice out of that list, and decide where the new project lives (same `DotNetCareerPath` workspace, new solution/folder, presumably alongside `RoadmapOS`).
+2. Begin Phase 2, Week 3, Day 12 (Tuesday of the weekly rhythm — "happy-path implementation"): extend `StockPilot.Api` past the single read-only `ProductsController` slice — likely candidates from Week 3's topic list: POST/PUT actions, manual DTO mapping for writes, and/or beginning the `Order`/`Warehouse` domain. Exact scope to be finalized in that day's plan.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 3 / Day 11 expected outcome
+## Week 3 / Day 12 expected outcome
 
-* A decision on StockPilot's project location/structure within this workspace.
-* A minimal ASP.NET Core Web API project scaffolded (controller-based, not minimal APIs — per `CLAUDE.md`'s engineering rules).
-* First vertical slice: likely a read-only Product or Order endpoint with correct HTTP status codes, matching Day 11's actual plan once presented.
-* No authentication (Week 5's topic), Docker, or messaging — Phase 2 starts fresh, RoadmapOS's lessons (DI, EF Core, testing) carry forward but its specific code does not.
+* Happy-path write operations (Create at minimum) added to StockPilot, with manual DTO↔entity mapping (no AutoMapper, per `CLAUDE.md`).
+* Correct HTTP status codes for writes (201 Created with a Location header, or similar, matching REST conventions not yet covered).
+* No database yet — still in-memory, per the Week 3 pacing (EF Core arrives Week 4).
+
