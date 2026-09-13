@@ -15,10 +15,35 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    public ActionResult<IReadOnlyList<ProductDto>> GetAll()
+    public ActionResult<PagedResult<ProductDto>> GetAll(
+        [FromQuery] string? search = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10)
     {
-        var dtos = _productStore.GetAll().Select(ToDto).ToList();
-        return Ok(dtos);
+        var products = _productStore.GetAll().AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            products = products.Where(p =>
+                p.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                p.Sku.Contains(search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        products = sortBy?.ToLowerInvariant() switch
+        {
+            "price" => products.OrderBy(p => p.Price),
+            "name" => products.OrderBy(p => p.Name),
+            "sku" => products.OrderBy(p => p.Sku),
+            _ => products.OrderBy(p => p.Id)
+        };
+
+        var totalCount = products.Count();
+        var pagedProducts = products.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        var dtos = pagedProducts.Select(ToDto).ToList();
+
+        var result = new PagedResult<ProductDto>(dtos, page, pageSize, totalCount);
+        return Ok(result);
     }
 
     [HttpGet("{id}")]

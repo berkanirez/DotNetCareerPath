@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 13 (complete)
+* **Day:** 15 (complete) — **Week 3 closed**
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** Validation added to `CreateProductRequest`; `[ApiController]`'s automatic 400/`ValidationProblemDetails` confirmed live; global exception handling (`AddProblemDetails`/`UseExceptionHandler`) added and verified both with and without it (raw stack trace vs. clean ProblemDetails).
+* **Status:** `GetAll` supports search/sort/pagination (`PagedResult<T>` envelope); full regression across both StockPilot and RoadmapOS solutions passing; a live Skip/Take-order bug demonstration confirmed why sequencing matters.
 * **Available study time:** 2 hours/day
-* **Progress:** ~12% (Day 13 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~14% (Day 15 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -112,6 +112,23 @@ This file reflects the actual current state of the learning journey. It must alw
 * Full regression check after removing the temporary throw: `GetAll`/`GetById`/`Create`/`Delete`/invalid-`Create` all still correct.
 * Independent task completed and verified: added `[MinLength(2)]` to `Sku`, confirmed a single-character SKU is rejected (400) and a two-character one is accepted (201).
 * `docs/daily-code-notes/day-13.md` created (Turkish), including both the "with" and "without" global-error-handling transcripts.
+* Discovered live: a naive test attempt against `ProductsController`'s old `static` product list produced an order-dependent failure (`Expected: 4, Actual: 5`) — direct proof that shared static state breaks test isolation.
+* `Models/IProductStore.cs` + `InMemoryProductStore.cs` added — the same pattern as RoadmapOS's `ISkillCatalog`/`InMemorySkillCatalog`, this time motivated by a real, just-discovered testing problem rather than introduced speculatively.
+* `ProductsController` refactored to constructor-inject `IProductStore` instead of holding a `static` list; `Program.cs` registers it `AddSingleton`.
+* `tests/StockPilot.Api.Tests` created; `ProductsControllerTests.cs` — 7 tests (later 8 with the independent task), each building its own fresh `InMemoryProductStore`, confirmed fully order-independent.
+* Full HTTP regression via curl after the refactor: `GetAll`/`GetById`/`Create`/`Delete`/invalid-`Create` all unchanged.
+* `docs/daily-code-notes/day-14.md` created (Turkish), including the naive-attempt failure transcript.
+* Independent task completed and verified: `Create_CalledTwiceOnSameStore_AssignsSequentialIds` — two `Create` calls on the *same* controller/store instance correctly get IDs 4 then 5 (a real typo, `created` vs `created1`, plus a path-resolution mixup running `dotnet build`/`dotnet test` from the wrong directory, were both debugged live before it passed).
+* Day 14 changes committed and pushed by Berkan (`6464d64`).
+* `Models/PagedResult.cs` added (generic paging envelope: `Items`, `Page`, `PageSize`, `TotalCount`).
+* `ProductsController.GetAll` rewritten with `[FromQuery] search/sortBy/page/pageSize`, using LINQ `Where`/`OrderBy`/`Skip`/`Take` for the first time in this codebase.
+* 3 existing tests updated for the new `PagedResult<ProductDto>` return shape (previously asserted a bare `List<ProductDto>`).
+* Full regression: both `StockPilot.slnx` and `RoadmapOS.slnx` build and test clean independently (8/8 each).
+* Live bug demonstration: temporarily reversed `Skip`/`Take` to `Take`/`Skip` — `page=2&pageSize=1` returned an empty result (`"items": []`) instead of the correct product, proving order matters; reverted immediately after, confirmed correct again.
+* Noted in passing: editing a file open in the IDE via a terminal command (`sed`) can be silently overwritten by the IDE's own in-memory state — switched to the `Edit` tool for the live demo to avoid recurrence.
+* Independent task completed and verified (found already done, ahead of being asked): `sortBy=sku` option added to the sort `switch`, confirmed live via `?sortBy=sku`.
+* `docs/daily-code-notes/day-15.md` created (Turkish), including the Week 3 close-out summary.
+* **Week 3 (StockPilot Inventory and Order API, first slice) complete.**
 
 ## Decisions on record
 
@@ -137,12 +154,13 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 3, Day 14 (Thursday of the weekly rhythm — "tests, failures and production considerations"): likely a `StockPilot.Api.Tests` xUnit project (mirroring RoadmapOS Day 7), testing `ToDto` mapping and/or validation rules directly, plus more deliberate failure-case coverage. Exact scope to be finalized in that day's plan.
+2. Begin Phase 2, Week 4, Day 16: EF Core for StockPilot — `StockPilot.Api`'s own `DbContext`, `Product` mapped as a real entity, first migration, `EfProductStore` implementing `IProductStore` (mirroring RoadmapOS's Day 3→4 `InMemorySkillCatalog`→`EfSkillCatalog` swap, `ProductsController` unchanged). Week 4's full topic list also includes transactions, optimistic concurrency, constraints, SQL indexes, query analysis, async database operations, `CancellationToken`, and stock-reservation rules — Day 16 (Monday-style) likely scopes just the first slice.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 3 / Day 14 expected outcome
+## Week 4 / Day 16 expected outcome
 
-* A test project for StockPilot, first tests written (mapping and/or validation logic).
-* Additional failure scenarios considered and verified.
-* Still in-memory — EF Core arrives Week 4.
+* `StockPilotDbContext` and a real `Products` table in SQL Server (same local instance as RoadmapOS, different database).
+* `EfProductStore : IProductStore` registered in place of `InMemoryProductStore`; `ProductsController` untouched.
+* `InMemoryProductStore` likely kept (unregistered) for future test-double use, mirroring RoadmapOS Day 4's decision.
+* First migration applied; existing StockPilot tests still passing (may need adjustment once `IProductStore`'s data source is real SQL Server rather than instant in-memory).
 

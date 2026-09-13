@@ -17,8 +17,9 @@ public class ProductsControllerTests
 
         var result = controller.GetAll();
 
-        var products = Assert.IsType<List<ProductDto>>(((OkObjectResult)result.Result!).Value);
-        Assert.Equal(3, products.Count);
+        var page = Assert.IsType<PagedResult<ProductDto>>(((OkObjectResult)result.Result!).Value);
+        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(3, page.Items.Count);
     }
 
     [Fact]
@@ -56,8 +57,8 @@ public class ProductsControllerTests
         Assert.Equal(4, dto.Id);
 
         var afterCreate = controller.GetAll();
-        var products = Assert.IsType<List<ProductDto>>(((OkObjectResult)afterCreate.Result!).Value);
-        Assert.Equal(4, products.Count);
+        var page = Assert.IsType<PagedResult<ProductDto>>(((OkObjectResult)afterCreate.Result!).Value);
+        Assert.Equal(4, page.TotalCount);
     }
 
     [Fact]
@@ -84,8 +85,8 @@ public class ProductsControllerTests
 
         Assert.IsType<NoContentResult>(result);
         var afterDelete = controller.GetAll();
-        var products = Assert.IsType<List<ProductDto>>(((OkObjectResult)afterDelete.Result!).Value);
-        Assert.DoesNotContain(products, p => p.Id == 2);
+        var page = Assert.IsType<PagedResult<ProductDto>>(((OkObjectResult)afterDelete.Result!).Value);
+        Assert.DoesNotContain(page.Items, p => p.Id == 2);
     }
 
     [Fact]

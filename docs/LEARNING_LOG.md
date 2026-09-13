@@ -546,3 +546,40 @@ Copy this template for each new entry:
 **Independent task:** Add one more validation rule to `CreateProductRequest` and verify it live. Completed and independently verified by Berkan (`[MinLength(2)]` on `Sku`); re-verified by Claude.
 
 **Next session:** Phase 2, Week 3, Day 14 (Thursday — tests, failures, production considerations) — a `StockPilot.Api.Tests` project, first tests (mapping/validation), more failure-case coverage.
+
+### 2026-09-13 — Phase 2, Week 3, Day 14
+
+**Topic:** Test isolation, `IProductStore`/DI, first StockPilot tests.
+
+**Problem solved:** A naive first attempt at testing `ProductsController` directly failed live — its `static` product list meant one test's `Create` call permanently polluted every other test's view of the data. Fixed by extracting storage into `IProductStore`/`InMemoryProductStore`, the exact same DI seam RoadmapOS introduced on Day 3, this time motivated by a concrete, just-observed failure rather than introduced up front.
+
+**What I learned:** `static` fields live at the process level, not per-instance — xUnit's guarantee of "a fresh test class instance per test method" does nothing to reset them, so shared mutable static state silently breaks test isolation regardless of test framework; the fix (inject a per-instance store, register it `Singleton` in the real app) is identical in shape to RoadmapOS Day 3's `ISkillCatalog`, reinforcing that this is a general pattern, not a one-off; `Assert.IsType<T>()` both verifies AND casts in one call; `ActionResult<T>`'s `.Result` property needs an explicit cast (`(OkObjectResult)result.Result!`) before its `.Value` can be unwrapped, because `.Result`'s declared type is the non-generic base `ActionResult`; unit-testing a controller method directly bypasses the entire ASP.NET Core request pipeline, so `[ApiController]`'s automatic validation never runs in these tests — confirmed as a real, understood limitation, not silently assumed away.
+
+**What I implemented:**
+* A deliberate, reverted naive test (`NaiveAttempt.cs`) proving the static-list test-isolation bug live (`Expected: 4, Actual: 5`), then deleted.
+* `Models/IProductStore.cs`, `InMemoryProductStore.cs` — non-static, instance-based storage.
+* `ProductsController` refactored to constructor-inject `IProductStore`; `Program.cs` registers it `AddSingleton`.
+* `tests/StockPilot.Api.Tests/ProductsControllerTests.cs` — 7 tests, each via a `CreateController()` helper building a fresh controller+store pair; later an 8th (independent task) verifying sequential ID assignment *within* one shared store instance.
+
+**Runtime flow:** No production runtime change — `ProductsController` still resolves an `IProductStore` via DI exactly as before conceptually, just through an abstraction now. Tests call controller methods directly, bypassing Kestrel/routing/filters entirely. Full transcript, including the very detailed line-by-line walkthrough of `ActionResult<T>` unwrapping that was needed on a second pass, in `docs/daily-code-notes/day-14.md`.
+
+**Verification:**
+* Naive attempt: 1 passed, 1 failed as predicted, live.
+* After refactor: `dotnet test` → 8/8 passing (7 written today, 1 independent).
+* Full curl regression: `GetAll`/`GetById`/`Create`/`Delete`/invalid-`Create` unchanged after the refactor.
+* Independent task: a real typo (`created` vs. `created1`) and a directory-relative-path mixup running `dotnet build`/`dotnet test` from inside `src/StockPilot.Api` were both hit and debugged live before the new test passed.
+
+**Evidence:** A real, demonstrated bug (test-isolation failure) and its fix; passing, isolated test suite; commit (`6464d64`); English/Turkish technical explanation (needed a very detailed, line-by-line second pass on `ActionResult<T>`/`Assert.IsType` mechanics before it landed); independent task completed and re-verified, including debugging real mistakes along the way.
+
+**Mistakes or difficulties:** The first explanation of `ProductsControllerTests.cs` was apparently too high-level — a full line-by-line walkthrough (what each cast, unwrap, and assertion actually does mechanically) was requested and given afterward. Worth defaulting to this level of detail for new C#/testing syntax going forward rather than waiting to be asked twice.
+
+**Production considerations:** These are still pure unit tests (no HTTP, no validation pipeline) — an integration-test day (`WebApplicationFactory`, real HTTP requests) is the natural next step for testing `[ApiController]`'s validation behavior specifically, not scheduled yet.
+
+**Understanding questions and answers:**
+1. Q: Why did the static list break test isolation? A: Tests must not affect each other, but a static list is shared across every test — one test's mutation is visible to the next.
+2. Q: Why `Singleton` for `IProductStore` in the real app? A: The app needs the same data shared across all requests (unlike tests, which each want a private copy) — same reasoning as RoadmapOS's `InMemorySkillCatalog`.
+3. Q: Why doesn't `[ApiController]`'s automatic validation run when a test calls `controller.Create(request)` directly? A: That behavior is enforced by the MVC request pipeline (routing → filters → action), which a direct method call never enters — no HTTP request means no pipeline, no filters, no automatic validation.
+
+**Independent task:** Write a test creating two products on the same controller/store instance, verifying sequential IDs (4, then 5). Completed and independently verified by Berkan, including live-debugging a real typo and a working-directory path issue; re-verified by Claude (8/8 passing).
+
+**Next session:** Phase 2, Week 3, Day 15 (Friday — refactor/verification/documentation, closing out Week 3) — pagination/filtering/sorting and/or interactive API docs, plus a full verification pass.
