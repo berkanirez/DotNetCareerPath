@@ -583,3 +583,42 @@ Copy this template for each new entry:
 **Independent task:** Write a test creating two products on the same controller/store instance, verifying sequential IDs (4, then 5). Completed and independently verified by Berkan, including live-debugging a real typo and a working-directory path issue; re-verified by Claude (8/8 passing).
 
 **Next session:** Phase 2, Week 3, Day 15 (Friday — refactor/verification/documentation, closing out Week 3) — pagination/filtering/sorting and/or interactive API docs, plus a full verification pass.
+
+### 2026-09-13 — Phase 2, Week 3, Day 15 (Week 3 closed)
+
+**Topic:** Search/sort/pagination on `GetAll`, full regression across both solutions, Week 3 close-out.
+
+**Problem solved:** `GetAll` always returned every product with no way to filter, order, or page through results — a real limitation for any API expected to scale past a handful of records. Closed out Week 3 by adding this and running a full verification pass across both StockPilot and RoadmapOS.
+
+**What I learned:** `.Skip()`/`.Take()` order is not interchangeable — proved live by temporarily swapping them (`Take(1).Skip(1)` on a 3-item, single-page-size query returned an empty result instead of the correct second item), then explaining precisely why: `Take` first collapses the sequence down to `pageSize` items, so a subsequent `Skip` of any amount beyond that empties it out entirely. Also hit a real tooling gotcha: editing a file open in the IDE via a terminal command (`sed`) got silently overwritten by the IDE's own in-memory state once VS Code re-synced — switched to the `Edit` tool (which the IDE tracks properly) to redo the demonstration cleanly. `[FromQuery]` parameters are optional-by-default and orthogonal to route parameters (`{id}`) — the latter identify *which* resource, the former modify *how* the same resource is returned.
+
+**What I implemented:**
+* `Models/PagedResult.cs` — a generic `(Items, Page, PageSize, TotalCount)` envelope.
+* `ProductsController.GetAll` rewritten with `[FromQuery] search/sortBy/page/pageSize`, using `Where`/`OrderBy`/`Skip`/`Take` (first real use of LINQ filtering/sorting/paging operators in either codebase; RoadmapOS had only used `GroupBy`/`Select`).
+* 3 existing tests updated to assert against `PagedResult<ProductDto>` instead of a bare list.
+* Independent task (found already completed ahead of being asked): a `"sku"` sort option added to the `sortBy` switch.
+
+**Runtime flow:** `GET /api/products?search=...&sortBy=...&page=...&pageSize=...` → query string bound to four optional parameters → filter → sort → count → skip/take → wrap in `PagedResult<ProductDto>` → `Ok(...)`. Full trace, including the reversed-order bug demonstration, in `docs/daily-code-notes/day-15.md`.
+
+**Verification:**
+* `dotnet test` (StockPilot) → 8/8 passing after updating for the new return type.
+* Live curl: default (`totalCount=3`), `?search=mouse` (1 match), `?sortBy=price` (ascending), `?page=2&pageSize=1` (correct single item + correct metadata), `?sortBy=sku` (independent task, correct SKU order).
+* Deliberately reversed `Skip`/`Take` → `page=2&pageSize=1` returned `"items": []`; reverted → correct result restored.
+* Full regression, both solutions: `dotnet build`/`dotnet test` on `StockPilot.slnx` (8/8) and `RoadmapOS.slnx` (8/8), both clean and independent of each other.
+
+**Evidence:** Working, verified pagination/filtering/sorting; a real bug demonstrated and explained, not just described; passing test suites across two solutions; commit (pending); English/Turkish technical explanation; independent task found already completed, re-verified.
+
+**Mistakes or difficulties:** A `sed`-based edit to a file open in the IDE was silently reverted by VS Code's own in-memory copy — worth remembering that terminal edits to IDE-open files are unreliable; the `Edit` tool (IDE-aware) is the safer choice for live demonstrations going forward.
+
+**Production considerations:** Sort options remain intentionally narrow (`id`/`name`/`price`/`sku`) — extendable later without redesign. No maximum `pageSize` cap exists yet (a client could request `pageSize=1000000`) — a reasonable future hardening item, not addressed today.
+
+**Understanding questions and answers:**
+1. Q: `[FromQuery]` vs. a route parameter (`{id}`)? A: A route parameter identifies *which* resource (omitting it changes the URL to a different route entirely); a query parameter modifies how the *same* resource is returned, and is naturally optional.
+2. Q: What would reversing `Skip`/`Take` do? A: Demonstrated live — `Take(pageSize)` first collapses the sequence to `pageSize` items, so any subsequent `Skip` beyond that count empties the result; confirmed with an actual empty response, then reverted.
+3. Q: Why return `TotalCount` separately from `Items.Count`? A: `Items.Count` only ever reflects the current page's size (bounded by `pageSize`); a client can't tell "3 total" from "3000 total" without a separate, unpaginated count.
+
+**Independent task:** Add a new `sortBy` option. Found already completed (`"sku"` case added) before being explicitly requested; re-verified live via `?sortBy=sku`.
+
+**Week 3 is complete.** StockPilot now has a working, tested, documented read/write API with validation, error handling, and query capabilities — all in-memory, ready for Week 4's EF Core migration.
+
+**Next session:** Phase 2, Week 4, Day 16 — EF Core for StockPilot (`StockPilotDbContext`, `Product` as a real entity, first migration, `EfProductStore` replacing `InMemoryProductStore`).
