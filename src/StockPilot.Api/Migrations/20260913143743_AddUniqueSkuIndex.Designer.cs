@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using StockPilot.Api.Data;
 
@@ -10,9 +11,11 @@ using StockPilot.Api.Data;
 namespace StockPilot.Api.Migrations
 {
     [DbContext(typeof(StockPilotDbContext))]
-    partial class StockPilotDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260913143743_AddUniqueSkuIndex")]
+    partial class AddUniqueSkuIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
