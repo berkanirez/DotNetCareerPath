@@ -24,13 +24,53 @@ A long-term, project-based learning workspace to transfer Berkan's existing prof
 
 ## Current status
 
-* **Phase:** Workspace setup
-* **Project:** RoadmapOS
-* **Week:** 1
-* **Day:** 0
-* **Progress:** 0%
+* **Phase:** Phase 1 — RoadmapOS (V1 released)
+* **Project:** StockPilot Inventory and Order API (Phase 2 starting)
+* **Week:** 3
+* **Day:** 11
+* **Progress:** ~9%
 
 See [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) for full detail.
+
+## RoadmapOS (Phase 1 project)
+
+RoadmapOS is a single-user ASP.NET Core MVC application that tracks this very learning roadmap: skills with target/current levels, roadmap phases/projects/milestones, evidence records, and an overall/category progress dashboard.
+
+### Prerequisites
+
+* .NET 10 SDK
+* SQL Server (Express, Developer, or any local instance) — a connection string is configured in `src/RoadmapOS.Web/appsettings.Development.json` for a local `localhost\SQLEXPRESS` instance; adjust it if your instance name differs.
+
+### Running it locally
+
+```
+cd src/RoadmapOS.Web
+dotnet restore
+dotnet ef database update
+dotnet run
+```
+
+The app seeds starter data automatically on first run (in `Development` only — see `src/RoadmapOS.Web/Data/DbSeeder.cs`). Then visit:
+
+* `/` — home page
+* `/Skills` — list, create and edit skills, with an evidence count per skill
+* `/Dashboard` — overall and per-category progress
+
+### Running the tests
+
+```
+dotnet test
+```
+
+(Run from the repository root to pick up the `RoadmapOS.Web.Tests` project via the solution.)
+
+### Known simplifications (V1)
+
+* Single user, no authentication.
+* Seed data is a runtime, idempotent seeder rather than EF Core's `HasData()` (see `Data/DbSeeder.cs` for why).
+* `Evidence` records are tracked and displayed but not yet enforced by any business rule.
+* No delete flow for skills.
+* An advanced UI was deliberately not used.
 
 ## Documentation
 

@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 8 (complete)
-* **Active project:** RoadmapOS
-* **Status:** Day 8 complete — `/Dashboard` shows overall and category progress via LINQ (`GroupBy`/`Select`), verified against real data
+* **Day:** 10 (complete) — **RoadmapOS V1 released, Phase 1 complete**
+* **Active project:** StockPilot Inventory and Order API (Phase 2 starting)
+* **Status:** All 7 items of Phase 1's completion gate confirmed (see `docs/daily-code-notes/day-10.md` for the full table). Berkan explained the MVC request lifecycle and DI/EF Core in his own words, with one correction (DI redirects a dependency to an abstraction/external source, it doesn't remove it).
 * **Available study time:** 2 hours/day
-* **Progress:** ~7% (Day 8 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~9% (Day 10 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -73,6 +73,21 @@ This file reflects the actual current state of the learning journey. It must alw
 * `_Layout.cshtml` nav updated with "Dashboard" and (previously missing) "Skills" links.
 * `docs/daily-code-notes/day-08.md` created (Turkish).
 * Independent task completed and verified: added a new `Skill` (`xUnit`, category `Testing`) via the Create form; `/Dashboard` automatically showed a new "Testing" row with the correctly hand-calculated percentage, with no code changes — confirming the dashboard is fully data-driven.
+* Seed logic extracted from `Program.cs` into `Data/DbSeeder.cs`; deliberately kept as a runtime idempotent seeder rather than EF Core's `HasData()`, since real organic data already exists in the database (collision risk with fixed migration-baked IDs).
+* `Evidence` entity added (`Domain/Evidence.cs`), linked to `Skill` via `EvidenceRecords` (one-to-many, same pattern as Day 6's Phase/Project/Milestone), migrated and seeded (2 example records tied to `Skill.Name` lookups, not fixed IDs).
+* `EfSkillCatalog.GetAll()` updated with `.Include(s => s.EvidenceRecords)` — confirmed live, via the actual generated SQL (`LEFT JOIN`), that this is required for the navigation to populate at all.
+* `Views/Skills/Index.cshtml` shows an Evidence count per skill.
+* `ILogger<SkillsController>` introduced; `LogInformation` on successful Create/Edit, `LogWarning` on Edit-not-found.
+* Existing (Day 5) `NotFound()` 404 behavior on `SkillsController.Edit` verified live for the first time (`curl` + console log), rather than just trusted from reading the code.
+* `docs/daily-code-notes/day-09.md` created (Turkish).
+* Independent task completed and verified: added a new `Evidence` row directly via SSMS (tied to `Git`); `/Skills` correctly showed the updated count with no code changes.
+* Day 9 changes committed by Berkan (`5f3963d`).
+* `Create.cshtml`/`Edit.cshtml` duplication (open since Day 5) refactored into a shared `Views/Skills/_SkillForm.cshtml` partial; behavior confirmed unchanged live (valid/invalid submission, pre-filled Edit form).
+* Clean-build verification: `bin`/`obj` deleted across both projects, rebuilt from scratch — 0 errors, 0 warnings, 8/8 tests passing.
+* Full end-to-end walkthrough: `/`, `/Home/Privacy`, `/Skills`, `/Skills/Create`, `/Skills/Edit/1`, `/Dashboard` all verified HTTP 200.
+* `README.md` updated: real "how to run RoadmapOS" instructions, a "Known simplifications" section (Berkan added one entry independently), and a corrected "Current status".
+* Phase 1 completion gate (`docs/ROADMAP.md`) checked item by item — all 7 confirmed, see `docs/daily-code-notes/day-10.md` for the table and evidence per item.
+* **RoadmapOS V1 released.**
 
 ## Decisions on record
 
@@ -95,13 +110,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 1, Week 2, Day 9: explain and plan requirement mapping, evidence records, logging, seed data, and basic error handling.
+2. Begin Phase 2, Week 3, Day 11: kick off **StockPilot Inventory and Order API**. `docs/ROADMAP.md`'s Week 3 is described at the weekly level (controller-based REST API, HTTP methods/status codes, DTOs, manual mapping, validation, Swagger/OpenAPI, ProblemDetails, global error handling, pagination/filtering/sorting) rather than broken into daily topics like Phase 1 — the Day 11 plan needs to scope a first vertical slice out of that list, and decide where the new project lives (same `DotNetCareerPath` workspace, new solution/folder, presumably alongside `RoadmapOS`).
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Day 9 expected outcome
+## Week 3 / Day 11 expected outcome
 
-* A real seed data strategy replacing the temporary Development-only seed blocks in `Program.cs` (in place since Day 4/6).
-* Requirement/evidence concept modeled in the app itself (linking `Skill`-like tracking to the manual `REQUIREMENTS_MATRIX.md` process), if in scope for today — to be confirmed in the day's plan.
-* Structured logging introduced where meaningful.
-* Basic error handling for realistic failure cases (not yet covered: e.g. a missing record on `Edit`).
-* No authentication, Docker or future technology added.
+* A decision on StockPilot's project location/structure within this workspace.
+* A minimal ASP.NET Core Web API project scaffolded (controller-based, not minimal APIs — per `CLAUDE.md`'s engineering rules).
+* First vertical slice: likely a read-only Product or Order endpoint with correct HTTP status codes, matching Day 11's actual plan once presented.
+* No authentication (Week 5's topic), Docker, or messaging — Phase 2 starts fresh, RoadmapOS's lessons (DI, EF Core, testing) carry forward but its specific code does not.

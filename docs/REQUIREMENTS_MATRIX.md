@@ -49,10 +49,10 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 |---|---|---|---|---|---|
 | C# | 4 | Phase 1–6 | Unit test, working endpoint, English technical explanation | 2 | In Progress |
 | .NET CLI / runtime | 3 | Phase 1 | Debugging note, English technical explanation | 1 | In Progress |
-| ASP.NET Core | 4 | Phase 1–4 | Working endpoint, integration test | 2 | In Progress |
-| MVC | 3 | Phase 1 | Working user flow | 2 | In Progress |
+| ASP.NET Core | 4 | Phase 1–4 | Working endpoint, integration test | 3 | In Progress |
+| MVC | 3 | Phase 1 | Working user flow | 3 | In Progress |
 | Controller-based Web API | 4 | Phase 2 | Working endpoint, integration test | 0 | Planned |
-| EF Core | 4 | Phase 1–4 | Unit test, integration test, commit | 2 | In Progress |
+| EF Core | 4 | Phase 1–4 | Unit test, integration test, commit | 3 | In Progress |
 | SQL Server | 3 | Phase 1–4 | Working endpoint, debugging note | 2 | In Progress |
 | PostgreSQL | 1 | Phase 4–5 (comparison only) | English technical explanation | 0 | Planned |
 | LINQ | 3 | Phase 1–2 | Unit test, commit | 2 | In Progress |
@@ -65,7 +65,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | SOLID | 3 | Phase 3 | ADR, commit | 0 | Planned |
 | Clean code | 3 | Phase 3 | Commit, pull request | 1 | In Progress |
 | Design patterns | 3 | Phase 3–4 | ADR, commit | 2 | In Progress |
-| Unit testing | 3 | Phase 1–6 | Unit test | 2 | In Progress |
+| Unit testing | 3 | Phase 1–6 | Unit test | 3 | In Progress |
 | Mocking | 3 | Phase 2 | Unit test | 0 | Planned |
 | TDD | 2 | Phase 1 | Unit test, commit | 1 | In Progress |
 | Integration testing | 3 | Phase 2–4 | Integration test | 0 | Planned |
@@ -83,7 +83,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Kubernetes | 2 | Phase 5 | Deployment | 0 | Planned |
 | Azure | 2 | Phase 5 | Deployment | 0 | Planned |
 | Performance | 3 | Phase 6 | Load-test result, debugging note | 0 | Planned |
-| Structured logging | 3 | Phase 3 | Debugging note, working endpoint | 0 | Planned |
+| Structured logging | 3 | Phase 3 | Debugging note, working endpoint | 1 | In Progress |
 | Observability | 2 | Phase 4 | Debugging note | 0 | Planned |
 | Angular | 2 | Phase 5 | Working user flow | 0 | Planned |
 | Git | 3 | Phase 1–6 | Commit, pull request | 0 | Planned |

@@ -352,3 +352,84 @@ Copy this template for each new entry:
 **Independent task:** Add a new skill in a brand-new category via the real Create form, hand-calculate its expected dashboard percentage first, then confirm `/Dashboard` shows it correctly with no code changes. Completed and independently verified by Berkan (`xUnit`/`Testing`, 25%); re-verified by Claude via direct SQL query and the running app.
 
 **Next session:** Phase 1, Week 2, Day 9 — requirement mapping, evidence records, logging, seed data, basic error handling.
+
+### 2026-09-12 — Phase 1, Week 2, Day 9
+
+**Topic:** Requirement mapping, evidence records, logging, seed data, basic error handling.
+
+**Problem solved:** Cleaning up ad-hoc, inline seed logic scattered in `Program.cs`; modeling `REQUIREMENTS_MATRIX.md`'s manual "Level 3/4 requires evidence" rule as a real, queryable `Evidence` entity inside the app itself; adding real observability (logging) and verifying error-handling paths that had existed unverified since Day 5.
+
+**What I learned:** The concrete, practical reason to prefer a runtime idempotent seeder over EF Core's migration-baked `HasData()` — not a style preference, but because this specific database already holds real, organically-created data (added/edited through the app by Berkan), and `HasData`'s fixed IDs risk colliding with it; that EF Core never populates a navigation property (`Skill.EvidenceRecords`) unless `.Include()` is used, confirmed directly by inspecting the actual generated SQL (with vs. without a `LEFT JOIN`); the practical difference between `LogInformation` (normal, expected events) and `LogWarning` (non-fatal but noteworthy, worth a human's attention); and — importantly — that a new domain concept (`Evidence`) can exist purely as a display/tracking mechanism today without yet being enforced by any business rule, and that distinction (modeled vs. enforced) is worth stating explicitly rather than leaving implied.
+
+**What I implemented:**
+* `Data/DbSeeder.cs` — seed logic extracted from `Program.cs` into one dedicated, documented class (`SeedSkills`, `SeedRoadmap`, `SeedEvidence`), each idempotent (`if (...Any()) return;`).
+* `Domain/Evidence.cs` + `Skill.EvidenceRecords` navigation — same relationship pattern as Day 6's `Project`/`Milestone`, applied to a new concept.
+* `RoadmapOSDbContext`: new `DbSet<Evidence>`, Fluent API config (`HasMaxLength`, `HasOne`/`WithMany`/`OnDelete(Cascade)`); `AddEvidence` migration created and applied.
+* `EfSkillCatalog.GetAll()` updated with `.Include(s => s.EvidenceRecords)`.
+* `Views/Skills/Index.cshtml` — new "Evidence" column (count).
+* `SkillsController`: `ILogger<SkillsController>` injected; `LogInformation` on successful Create/Edit, `LogWarning` when `Edit` can't find the requested skill.
+
+**Runtime flow:** `GET /Skills` now issues a single query with a `LEFT JOIN` (confirmed in console output) instead of a plain `SELECT`, thanks to `.Include()`. `Edit` on a missing ID logs a warning before returning 404. Full trace in `docs/daily-code-notes/day-09.md`.
+
+**Verification:**
+* `dotnet build` → 0 errors, 0 warnings. `dotnet test` → 8/8 passing (no regression from unrelated changes).
+* `GET /Skills` → Evidence counts correct per seeded data (C#: 1, EF Core: 1, others: 0).
+* `GET /Skills/Edit/9999` → HTTP 404, confirmed alongside the exact `LogWarning` line appearing in the console — the first time this Day-5-era code path was actually exercised rather than just read.
+* Read (not triggered) the existing `UseExceptionHandler("/Home/Error")`/`UseHsts()` block from Day 1's scaffold and explained what it does in Production vs. Development, without forcing a live crash against the real database.
+* Independent task: inserted a new `Evidence` row directly via SSMS against `Git`; `/Skills` immediately reflected the updated count with zero code changes.
+
+**Evidence:** Working, verified feature (`Evidence` tracking, logging, 404 path); commit (`5f3963d`); English/Turkish technical explanation (seed strategy trade-off, `.Include()` mechanics, log-level semantics, and — after a follow-up question — the actual purpose of `Evidence` beyond its syntax); independent task completed and re-verified.
+
+**Mistakes or difficulties:** The first pass explained *how* `Evidence` works but not *why it exists* — a good reminder that syntax fluency (which landed fine, per correct answers to the understanding questions) doesn't automatically carry the "real problem being solved" framing; that needs to be stated explicitly, not assumed to follow from the mechanics.
+
+**Production considerations:** `Evidence` is display-only today — no rule yet enforces "Level 3/4 requires at least one Evidence record" (a plausible future enhancement, out of today's scope). The `HasData` vs. runtime-seeder decision is specific to this database's current state, not a universal rule — a brand-new project without organic data might reasonably choose `HasData` instead.
+
+**Understanding questions and answers:**
+1. Q: Why still a runtime seeder instead of `HasData`? A: `HasData` bakes fixed IDs into a migration; this database already holds real, organically-added data, so fixed IDs risk colliding with it.
+2. Q: What would the Evidence count show without `.Include()`? A: Zero for every skill — related data doesn't populate unless explicitly included, confirmed via the actual SQL generated (no `LEFT JOIN` without it).
+3. Q: `LogInformation` vs. `LogWarning`? A: Information records normal, successful events; Warning flags non-fatal but noteworthy situations meant to catch a human's attention.
+
+**Independent task:** Insert a new `Evidence` row directly via SSMS for an existing skill (`Git`), then confirm `/Skills` shows the updated count with no code changes. Completed and independently verified by Berkan; re-verified by Claude via direct SQL query.
+
+**Next session:** Phase 1, Week 2, Day 10 (final RoadmapOS day) — refactoring, full build/test verification, English README, demonstration, RoadmapOS V1 release.
+
+### 2026-09-13 — Phase 1, Week 2, Day 10 (RoadmapOS V1 release)
+
+**Topic:** Refactoring, build/test verification, English README, demonstration, RoadmapOS V1 release.
+
+**Problem solved:** Closing out Phase 1 honestly — not just adding one more feature, but going back over 9 days of code to remove known debt (the Day-5 form duplication), prove the whole solution still builds and works from a clean checkout, give the repository a README someone else could actually follow, and check `docs/ROADMAP.md`'s Phase 1 completion gate item by item rather than assuming it was satisfied along the way.
+
+**What I learned/reinforced:** That a refactor is verified by proving behavior is *unchanged* (re-ran the exact same valid/invalid submission and pre-filled-edit checks from Day 5, got identical results), not just by the code compiling; that "builds on my machine" and "builds from a clean checkout" are different claims, and only deleting `bin`/`obj` and rebuilding actually tests the second one; that two of the seven completion-gate items (explaining the MVC request lifecycle; explaining DI and EF Core) could only be satisfied by Berkan's own explanation, not by any file Claude could point to — and that exercise surfaced one genuine misconception worth correcting: DI does not remove a dependency, it redirects it (to an abstraction, supplied from outside) rather than eliminating it.
+
+**What I implemented:**
+* `Views/Skills/_SkillForm.cshtml` — the shared form fields extracted from `Create.cshtml`/`Edit.cshtml`; each of those keeps only its own `<form>` wrapper (differing action/hidden `Id`).
+* Clean-build verification: deleted `bin`/`obj` in both projects, rebuilt from scratch (0 errors/warnings), reran the full test suite (8/8).
+* Full end-to-end manual walkthrough of every route: `/`, `/Home/Privacy`, `/Skills`, `/Skills/Create`, `/Skills/Edit/1`, `/Dashboard`.
+* `README.md`: corrected the long-stale "Current status" section (unchanged since Day 0), added a real "how to run RoadmapOS" section (prerequisites, `dotnet ef database update`, `dotnet run`, what each route does, how to run tests), and a "Known simplifications (V1)" section — Berkan added one entry to it independently.
+* Walked the Phase 1 completion gate from `docs/ROADMAP.md` against reality, item by item (table in `docs/daily-code-notes/day-10.md`), including an honest partial-credit note on "Skills and roadmap items can be managed" (Skills has full CRUD; `RoadmapPhase`/`Project`/`Milestone` are relationally modeled but intentionally have no management UI — never asked for by the Day 6–9 plans).
+
+**Runtime flow:** No behavior changes today — see Day 1–9 entries for the full request/data flow, all still valid. Full detail (including the corrected DI/EF Core explanation) in `docs/daily-code-notes/day-10.md`.
+
+**Verification:**
+* `dotnet build` (from a fully clean `bin`/`obj` state) → 0 errors, 0 warnings.
+* `dotnet test` → 8/8 passing.
+* All 6 major routes → HTTP 200.
+* Refactor regression check: invalid `Create` submission → still HTTP 200 with "The Name field is required"; `Edit/1` still pre-fills correctly.
+* Berkan explained the full MVC request lifecycle (`Program.cs` → middleware → DI-resolved controller → domain/EF Core → view rendering) and DI/EF Core in his own words; both were correct in substance, with one DI framing corrected live.
+
+**Evidence:** All 7 Phase 1 completion-gate items satisfied, with concrete evidence for each (see the day-10 table); commit (pending); English README now serves as real onboarding documentation; independent task (README simplification entry) completed and verified.
+
+**Mistakes or difficulties:** None blocking. The DI misconception ("no dependency" vs. "redirected dependency") is a common one worth watching for again in Phase 2, where DI usage will scale up significantly (more services, more interfaces).
+
+**Production considerations:** The "Known simplifications" section in `README.md` is now the canonical, honest list of what V1 deliberately does not do — future phases should be checked against it rather than re-discovering the same gaps.
+
+**Understanding questions and answers (today's questions doubled as the release-gate check):**
+1. Q: Explain the full MVC request lifecycle for `GET /Skills`. A: Correct end-to-end, from `Program.cs` startup (DI registration, middleware pipeline order, `app.Run()`) through per-request middleware (`UseRouting` matching the endpoint, `UseAuthorization` passing through), DI resolving `SkillsController`'s dependencies within a per-request scope, `EfSkillCatalog.GetAll()` translating LINQ to a real SQL `LEFT JOIN` via `.Include()`, and convention-based view resolution wrapped in `_Layout.cshtml`.
+2. Q: Explain DI and EF Core. A: EF Core explanation correct (ORM, class↔table mapping, CRUD without hand-written SQL) plus the added nuance that `DbContext` represents a unit of work, not just a mapping layer. DI explanation needed one correction: dependencies aren't removed, they're redirected — to an abstraction (interface) supplied from outside rather than self-constructed via `new`.
+3. Q: Why doesn't `_SkillForm.cshtml` contain its own `<form>` tag? A: Correct — the `<form>` opening differs between Create and Edit (route/hidden `Id`), so only the genuinely shared content was extracted.
+
+**Independent task:** Add one more entry to `README.md`'s "Known simplifications" list, based on Berkan's own observation of using the app. Completed and independently verified.
+
+**RoadmapOS V1 is released.** Phase 1 is complete.
+
+**Next session:** Phase 2, Week 3, Day 11 — begin StockPilot Inventory and Order API (project setup + first vertical slice, scoped from Week 3's weekly topic list since Phase 2 isn't broken into daily topics like Phase 1 was).
