@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 1 — RoadmapOS
 * **Week:** 1
-* **Day:** 15 (complete) — **Week 3 closed**
+* **Day:** 17 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** `GetAll` supports search/sort/pagination (`PagedResult<T>` envelope); full regression across both StockPilot and RoadmapOS solutions passing; a live Skip/Take-order bug demonstration confirmed why sequencing matters.
+* **Status:** `IProductStore`, both implementations, and `ProductsController` converted to `async`/`await` with `CancellationToken` threaded through to EF Core; behavior unchanged, verified live; 9/9 tests passing (8 converted + 1 independent).
 * **Available study time:** 2 hours/day
-* **Progress:** ~14% (Day 15 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~16% (Day 17 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -129,6 +129,20 @@ This file reflects the actual current state of the learning journey. It must alw
 * Independent task completed and verified (found already done, ahead of being asked): `sortBy=sku` option added to the sort `switch`, confirmed live via `?sortBy=sku`.
 * `docs/daily-code-notes/day-15.md` created (Turkish), including the Week 3 close-out summary.
 * **Week 3 (StockPilot Inventory and Order API, first slice) complete.**
+* EF Core packages added to `StockPilot.Api`; `StockPilotDb` connection string added (same `localhost\SQLEXPRESS` instance as RoadmapOS, separate `StockPilot` database).
+* `Data/StockPilotDbContext.cs`, `Data/EfProductStore.cs`, `Data/DbSeeder.cs` added — mirroring RoadmapOS's `RoadmapOSDbContext`/`EfSkillCatalog`/`DbSeeder` pattern exactly.
+* Real bug caught from an EF Core tooling warning (not silently ignored): no precision/scale specified for `Product.Price` risked silent truncation; fixed with `HasPrecision(18, 2)`, migration regenerated cleanly.
+* `Program.cs`: DI registration for `IProductStore` switched from `AddSingleton<..., InMemoryProductStore>` to `AddScoped<..., EfProductStore>`; `InMemoryProductStore` kept (unregistered) for the existing tests, which still pass unchanged.
+* Discussed and clarified: why `IProductStore`/`EfProductStore` pass the domain `Product` directly rather than a DTO — DTOs protect the boundary between the server and the outside world (HTTP request/response), not internal calls between a controller and its own storage abstraction; the DTO boundary is still fully intact at `Create`'s input (`CreateProductRequest`) and every action's output (`ProductDto`/`PagedResult<ProductDto>`).
+* `docs/daily-code-notes/day-16.md` created (Turkish).
+* Independent task completed and verified: a 5th product inserted directly via SSMS/raw SQL (`SKU-008`, "Headphones"); `/api/products` showed it automatically, with no code changes.
+* Day 16 changes committed and pushed by Berkan (`e72936f`).
+* `IProductStore` converted to async signatures (`Task<T>` + `CancellationToken`); `EfProductStore` uses real EF Core async methods (`ToListAsync`, `FindAsync`, `SaveChangesAsync`); `InMemoryProductStore` uses `Task.FromResult(...)` (no real I/O, satisfies the interface only).
+* `ProductsController`'s four actions converted to `async Task<ActionResult<T>>`, each gaining a `CancellationToken` parameter (auto-populated by ASP.NET Core from `HttpContext.RequestAborted` — no attribute needed).
+* All 8 existing tests converted to `async Task`; full HTTP regression confirmed identical behavior to the synchronous version.
+* `docs/daily-code-notes/day-17.md` created (Turkish).
+* Independent task completed and verified: a new test (`GetBySearch_ReturnsMatchingProducts`, IDE-suggested but explained line-by-line afterward) confirming the `search` filter returns exactly one matching product; 9/9 tests passing.
+* Day 17 changes not yet committed (pending Berkan's confirmation).
 
 ## Decisions on record
 
@@ -154,13 +168,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 4, Day 16: EF Core for StockPilot — `StockPilot.Api`'s own `DbContext`, `Product` mapped as a real entity, first migration, `EfProductStore` implementing `IProductStore` (mirroring RoadmapOS's Day 3→4 `InMemorySkillCatalog`→`EfSkillCatalog` swap, `ProductsController` unchanged). Week 4's full topic list also includes transactions, optimistic concurrency, constraints, SQL indexes, query analysis, async database operations, `CancellationToken`, and stock-reservation rules — Day 16 (Monday-style) likely scopes just the first slice.
+2. Begin Phase 2, Week 4, Day 18 (Wednesday — persistence/infrastructure): database constraints and SQL indexes — most likely a unique constraint/index on `Product.Sku` (a real business rule: no two products should share a SKU), verified live by attempting a duplicate insert and confirming SQL Server rejects it. Remaining Week 4 topics after this: transactions, optimistic concurrency, query analysis, stock-reservation rules.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 4 / Day 16 expected outcome
+## Week 4 / Day 18 expected outcome
 
-* `StockPilotDbContext` and a real `Products` table in SQL Server (same local instance as RoadmapOS, different database).
-* `EfProductStore : IProductStore` registered in place of `InMemoryProductStore`; `ProductsController` untouched.
-* `InMemoryProductStore` likely kept (unregistered) for future test-double use, mirroring RoadmapOS Day 4's decision.
-* First migration applied; existing StockPilot tests still passing (may need adjustment once `IProductStore`'s data source is real SQL Server rather than instant in-memory).
+* A unique index on `Product.Sku` (Fluent API `HasIndex(...).IsUnique()`), migrated and applied.
+* Live proof: inserting a duplicate SKU (via raw SQL or the API) is rejected by SQL Server, not just by application-level validation.
+* A decision on how `Create` should surface this failure to API clients (likely a 409 Conflict or a validation-style error, to be scoped in the day's plan).
 

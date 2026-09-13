@@ -11,34 +11,37 @@ public class InMemoryProductStore : IProductStore
 
     private int _nextId = 4;
 
-    public IReadOnlyList<Product> GetAll()
+    // No real I/O happens here — Task.FromResult(...) satisfies IProductStore's
+    // async signature (kept consistent with EfProductStore) without pretending
+    // there's actual asynchronous work to do.
+    public Task<IReadOnlyList<Product>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return _products;
+        return Task.FromResult<IReadOnlyList<Product>>(_products);
     }
 
-    public Product? GetById(int id)
+    public Task<Product?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
         foreach (var product in _products)
         {
             if (product.Id == id)
             {
-                return product;
+                return Task.FromResult<Product?>(product);
             }
         }
 
-        return null;
+        return Task.FromResult<Product?>(null);
     }
 
-    public Product Add(Product product)
+    public Task<Product> AddAsync(Product product, CancellationToken cancellationToken = default)
     {
         product.Id = _nextId++;
         _products.Add(product);
-        return product;
+        return Task.FromResult(product);
     }
 
-    public bool Remove(int id)
+    public async Task<bool> RemoveAsync(int id, CancellationToken cancellationToken = default)
     {
-        var product = GetById(id);
+        var product = await GetByIdAsync(id, cancellationToken);
         if (product is null)
         {
             return false;

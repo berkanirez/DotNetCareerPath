@@ -2,8 +2,8 @@ namespace StockPilot.Api.Models;
 
 public interface IProductStore
 {
-    IReadOnlyList<Product> GetAll();
-    Product? GetById(int id);
-    Product Add(Product product);
-    bool Remove(int id);
+    Task<IReadOnlyList<Product>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<Product?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
+    Task<Product> AddAsync(Product product, CancellationToken cancellationToken = default);
+    Task<bool> RemoveAsync(int id, CancellationToken cancellationToken = default);
 }

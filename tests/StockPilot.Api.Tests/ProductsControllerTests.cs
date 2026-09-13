@@ -11,11 +11,11 @@ public class ProductsControllerTests
     private static ProductsController CreateController() => new(new InMemoryProductStore());
 
     [Fact]
-    public void GetAll_ReturnsThreeSeededProducts()
+    public async Task GetAll_ReturnsThreeSeededProducts()
     {
         var controller = CreateController();
 
-        var result = controller.GetAll();
+        var result = await controller.GetAll();
 
         var page = Assert.IsType<PagedResult<ProductDto>>(((OkObjectResult)result.Result!).Value);
         Assert.Equal(3, page.TotalCount);
@@ -23,53 +23,53 @@ public class ProductsControllerTests
     }
 
     [Fact]
-    public void GetById_ExistingId_ReturnsProduct()
+    public async Task GetById_ExistingId_ReturnsProduct()
     {
         var controller = CreateController();
 
-        var result = controller.GetById(1);
+        var result = await controller.GetById(1);
 
         var product = Assert.IsType<ProductDto>(((OkObjectResult)result.Result!).Value);
         Assert.Equal("SKU-001", product.Sku);
     }
 
     [Fact]
-    public void GetById_MissingId_ReturnsNotFound()
+    public async Task GetById_MissingId_ReturnsNotFound()
     {
         var controller = CreateController();
 
-        var result = controller.GetById(999);
+        var result = await controller.GetById(999);
 
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]
-    public void Create_ValidRequest_ReturnsCreatedAtActionWithLocationAndAddsProduct()
+    public async Task Create_ValidRequest_ReturnsCreatedAtActionWithLocationAndAddsProduct()
     {
         var controller = CreateController();
         var request = new CreateProductRequest("SKU-004", "Webcam", 45.00m);
 
-        var result = controller.Create(request);
+        var result = await controller.Create(request);
 
         var created = Assert.IsType<CreatedAtActionResult>(result.Result);
         Assert.Equal(nameof(ProductsController.GetById), created.ActionName);
         var dto = Assert.IsType<ProductDto>(created.Value);
         Assert.Equal(4, dto.Id);
 
-        var afterCreate = controller.GetAll();
+        var afterCreate = await controller.GetAll();
         var page = Assert.IsType<PagedResult<ProductDto>>(((OkObjectResult)afterCreate.Result!).Value);
         Assert.Equal(4, page.TotalCount);
     }
 
     [Fact]
-    public void Create_OnASeparateTest_AlsoAssignsIdFour()
+    public async Task Create_OnASeparateTest_AlsoAssignsIdFour()
     {
         // This test would fail (see the reverted NaiveAttempt.cs experiment
         // earlier today) if both Create tests shared one static product list.
         // They don't — each test gets its own InMemoryProductStore.
         var controller = CreateController();
 
-        var result = controller.Create(new CreateProductRequest("SKU-005", "Headset", 55.00m));
+        var result = await controller.Create(new CreateProductRequest("SKU-005", "Headset", 55.00m));
 
         var created = Assert.IsType<CreatedAtActionResult>(result.Result);
         var dto = Assert.IsType<ProductDto>(created.Value);
@@ -77,36 +77,36 @@ public class ProductsControllerTests
     }
 
     [Fact]
-    public void Delete_ExistingId_RemovesProductAndReturnsNoContent()
+    public async Task Delete_ExistingId_RemovesProductAndReturnsNoContent()
     {
         var controller = CreateController();
 
-        var result = controller.Delete(2);
+        var result = await controller.Delete(2);
 
         Assert.IsType<NoContentResult>(result);
-        var afterDelete = controller.GetAll();
+        var afterDelete = await controller.GetAll();
         var page = Assert.IsType<PagedResult<ProductDto>>(((OkObjectResult)afterDelete.Result!).Value);
         Assert.DoesNotContain(page.Items, p => p.Id == 2);
     }
 
     [Fact]
-    public void Delete_MissingId_ReturnsNotFound()
+    public async Task Delete_MissingId_ReturnsNotFound()
     {
         var controller = CreateController();
 
-        var result = controller.Delete(999);
+        var result = await controller.Delete(999);
 
         Assert.IsType<NotFoundResult>(result);
     }
 
     [Fact]
-    public void Create_CalledTwiceOnSameStore_AssignsSequentialIds ()
+    public async Task Create_CalledTwiceOnSameStore_AssignsSequentialIds()
     {
         var controller = CreateController();
 
-        var result1 = controller.Create(new CreateProductRequest("SKU-006", "Item 6", 10.00m));
-        var result2 = controller.Create(new CreateProductRequest("SKU-007", "Item 7", 20.00m));
-        
+        var result1 = await controller.Create(new CreateProductRequest("SKU-006", "Item 6", 10.00m));
+        var result2 = await controller.Create(new CreateProductRequest("SKU-007", "Item 7", 20.00m));
+
         var created1 = Assert.IsType<CreatedAtActionResult>(result1.Result);
         var dto1 = Assert.IsType<ProductDto>(created1.Value);
         Assert.Equal(4, dto1.Id);
@@ -114,5 +114,17 @@ public class ProductsControllerTests
         var created2 = Assert.IsType<CreatedAtActionResult>(result2.Result);
         var dto2 = Assert.IsType<ProductDto>(created2.Value);
         Assert.Equal(5, dto2.Id);
+    }
+
+    [Fact]
+    public async Task GetBySearch_ReturnsMatchingProducts()
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetAll(search: "mouse");
+
+        var page = Assert.IsType<PagedResult<ProductDto>>(((OkObjectResult)result.Result!).Value);
+        Assert.Single(page.Items);
+        Assert.Equal("Wireless Mouse", page.Items[0].Name);
     }
 }

@@ -15,13 +15,15 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    public ActionResult<PagedResult<ProductDto>> GetAll(
+    public async Task<ActionResult<PagedResult<ProductDto>>> GetAll(
         [FromQuery] string? search = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10)
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
     {
-        var products = _productStore.GetAll().AsEnumerable();
+        var allProducts = await _productStore.GetAllAsync(cancellationToken);
+        var products = allProducts.AsEnumerable();
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -47,9 +49,9 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public ActionResult<ProductDto> GetById(int id)
+    public async Task<ActionResult<ProductDto>> GetById(int id, CancellationToken cancellationToken = default)
     {
-        var product = _productStore.GetById(id);
+        var product = await _productStore.GetByIdAsync(id, cancellationToken);
         if (product == null)
         {
             return NotFound();
@@ -59,19 +61,19 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost]
-    public ActionResult<ProductDto> Create(CreateProductRequest request)
+    public async Task<ActionResult<ProductDto>> Create(CreateProductRequest request, CancellationToken cancellationToken = default)
     {
         var product = new Product(request.Sku, request.Name, request.Price);
-        _productStore.Add(product);
+        await _productStore.AddAsync(product, cancellationToken);
 
         var dto = ToDto(product);
         return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
     }
 
     [HttpDelete("{id}")]
-    public IActionResult Delete(int id)
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken = default)
     {
-        var removed = _productStore.Remove(id);
+        var removed = await _productStore.RemoveAsync(id, cancellationToken);
         if (!removed)
         {
             return NotFound();

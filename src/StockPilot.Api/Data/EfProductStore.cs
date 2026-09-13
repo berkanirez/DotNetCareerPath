@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using StockPilot.Api.Models;
 
 namespace StockPilot.Api.Data;
@@ -11,33 +12,33 @@ public class EfProductStore : IProductStore
         _context = context;
     }
 
-    public IReadOnlyList<Product> GetAll()
+    public async Task<IReadOnlyList<Product>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return _context.Products.ToList();
+        return await _context.Products.ToListAsync(cancellationToken);
     }
 
-    public Product? GetById(int id)
+    public async Task<Product?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        return _context.Products.Find(id);
+        return await _context.Products.FindAsync([id], cancellationToken);
     }
 
-    public Product Add(Product product)
+    public async Task<Product> AddAsync(Product product, CancellationToken cancellationToken = default)
     {
         _context.Products.Add(product);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync(cancellationToken);
         return product;
     }
 
-    public bool Remove(int id)
+    public async Task<bool> RemoveAsync(int id, CancellationToken cancellationToken = default)
     {
-        var product = GetById(id);
+        var product = await GetByIdAsync(id, cancellationToken);
         if (product is null)
         {
             return false;
         }
 
         _context.Products.Remove(product);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync(cancellationToken);
         return true;
     }
 }

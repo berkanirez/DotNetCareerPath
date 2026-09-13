@@ -622,3 +622,78 @@ Copy this template for each new entry:
 **Week 3 is complete.** StockPilot now has a working, tested, documented read/write API with validation, error handling, and query capabilities — all in-memory, ready for Week 4's EF Core migration.
 
 **Next session:** Phase 2, Week 4, Day 16 — EF Core for StockPilot (`StockPilotDbContext`, `Product` as a real entity, first migration, `EfProductStore` replacing `InMemoryProductStore`).
+
+### 2026-09-13 — Phase 2, Week 4, Day 16
+
+**Topic:** EF Core + SQL Server for StockPilot — the RoadmapOS Day 3→4 transition, repeated.
+
+**Problem solved:** StockPilot's product data reset every time the app restarted. Gave it real persistence by swapping `IProductStore`'s registered implementation from `InMemoryProductStore` to a new `EfProductStore`, without touching `ProductsController` at all — the exact payoff Day 14's `IProductStore` abstraction was built for.
+
+**What I learned:** A real EF Core tooling warning (`decimal` property with no precision/scale specified, risking silent truncation) was caught from `dotnet ef migrations add`'s own output rather than assumed away — fixed with `HasPrecision(18, 2)`, migration regenerated. Clarified an important, general distinction (prompted by a sharp question): DTOs exist to protect the boundary between the server and the *outside world* (HTTP request/response bodies) — not for calls between a controller and its own internal storage abstraction. `IProductStore`/`EfProductStore` correctly pass the domain `Product` directly; the DTO boundary is still fully respected at `Create`'s input (`CreateProductRequest`) and every action's output (`ProductDto`/`PagedResult<ProductDto>`) — the same pattern RoadmapOS's `ISkillCatalog` already used.
+
+**What I implemented:**
+* EF Core packages, `StockPilotDb` connection string (same SQL Server instance as RoadmapOS, separate database).
+* `Data/StockPilotDbContext.cs`, `Data/EfProductStore.cs`, `Data/DbSeeder.cs` — direct mirrors of RoadmapOS's `RoadmapOSDbContext`/`EfSkillCatalog`/`DbSeeder`.
+* `Program.cs`: `IProductStore` registration switched `AddSingleton<..., InMemoryProductStore>` → `AddScoped<..., EfProductStore>` (Scoped for the same DbContext-thread-safety reason as RoadmapOS Day 4); `InMemoryProductStore` kept, unregistered, still used directly by existing tests.
+* `InitialCreate` migration (regenerated once, after the precision fix).
+
+**Runtime flow:** `ProductsController` now resolves `EfProductStore` via DI; `_context.Products.ToList()` issues a real SQL query; filtering/sorting/pagination still happens in-memory in the controller (a noted, deliberate simplification — not pushed down to SQL — to avoid changing `IProductStore`'s signature). Full trace in `docs/daily-code-notes/day-16.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 8/8 passing (existing tests untouched by the DI swap, since they construct `InMemoryProductStore` directly).
+* Migration applied — `StockPilot` database and `Products` table created with `decimal(18,2)` correctly in place.
+* Live curl: `GetAll` (seeded data), `Create` (201 + Location), `GetById` (new product) all against real SQL Server.
+* App fully stopped, then queried directly via SQL — all 4 rows (3 seed + 1 created) still present, proving real persistence.
+* Independent task: a 5th product inserted directly via SSMS (`SKU-008`, "Headphones"); `/api/products` showed it automatically with zero code changes.
+
+**Evidence:** Working, verified persistence; a real EF Core warning caught and fixed rather than ignored; commit (`e72936f`); English/Turkish technical explanation (Scoped rationale restated, DTO-vs-domain-object boundary clarified via a genuinely good question); independent task completed and re-verified.
+
+**Mistakes or difficulties:** None blocking. The DTO-boundary question was a valuable moment — confirms the "DTOs protect the server/client boundary, not internal calls" distinction needed explicit statement rather than being assumed obvious from prior days' pattern-following.
+
+**Production considerations:** `EfProductStore.GetAll()` pulls the entire table into memory before filtering/sorting/paging — fine at today's scale, but a real production concern if `Products` grows large; pushing `Where`/`OrderBy`/`Skip`/`Take` down to `IQueryable<Product>` (SQL-side) would be the eventual fix, deferred since it would require reshaping `IProductStore`'s interface.
+
+**Understanding questions and answers:**
+1. Q: Why `Scoped` (again)? A: Same as RoadmapOS Day 4 — `DbContext` holds a non-thread-safe connection and change tracker; sharing one across concurrent requests (as `Singleton` would) risks real bugs, so each request gets its own via `Scoped`.
+2. Q: Why keep `InMemoryProductStore` around? A: For tests — `ProductsControllerTests.cs` constructs it directly as a fast, isolated test double, avoiding a real database in unit tests.
+3. Q: What `Price` value could be silently truncated without `HasPrecision`? A: Something like `19.999` — a value with more decimal digits than the column's default scale allows.
+
+**Independent task:** Insert a product directly via SSMS/raw SQL, confirm it appears via `/api/products` with no code changes. Completed and independently verified by Berkan; re-verified by Claude via direct SQL query and the running app.
+
+**Next session:** Phase 2, Week 4, Day 17 — async database operations and `CancellationToken`, converting `IProductStore`/`EfProductStore`/`ProductsController` to `async`/`await` (a first for both codebases).
+
+### 2026-09-13 — Phase 2, Week 4, Day 17
+
+**Topic:** Async database operations, `CancellationToken` — a first for both RoadmapOS and StockPilot.
+
+**Problem solved:** All EF Core calls so far (in either codebase) had been synchronous, blocking the handling thread for the duration of each database round-trip. Converted `IProductStore`, both its implementations, and `ProductsController` to `async`/`await`, threading a `CancellationToken` through to EF Core's own async methods.
+
+**What I learned:** `CancellationToken` parameters on a controller action are special-cased by ASP.NET Core's model binding — no attribute needed, the framework auto-populates it from `HttpContext.RequestAborted`, which flips to cancelled if the client disconnects, a timeout fires, or the server is shutting down; that token, once passed all the way down into EF Core's async calls (`ToListAsync`, `FindAsync`, `SaveChangesAsync`), lets a long-running query abort early instead of wastefully finishing for a client no longer listening — conceptually the same idea as Node's `AbortSignal`. Confirmed a genuine design point via a follow-up question: `Task.FromResult(...)` in `InMemoryProductStore` satisfies `IProductStore`'s async contract without there being any real asynchronous work — a class can be forced to "look async" purely for interface consistency, distinct from actually benefiting from async I/O.
+
+**What I implemented:**
+* `IProductStore` — all four methods return `Task<T>` and accept an optional `CancellationToken`.
+* `EfProductStore` — real async EF Core calls throughout.
+* `InMemoryProductStore` — `Task.FromResult(...)` wrapping, no real I/O.
+* `ProductsController` — all four actions `async Task<ActionResult<T>>`, each with a `CancellationToken` parameter.
+* All 8 existing tests converted to `async Task`; independent task added a 9th (`GetBySearch_ReturnsMatchingProducts`), explained line-by-line after being IDE-suggested rather than hand-written.
+
+**Runtime flow:** `CancellationToken` auto-bound from `HttpContext.RequestAborted` → passed into `_productStore.XAsync(cancellationToken)` → `EfProductStore` passes it into the matching EF Core async call. Full trace in `docs/daily-code-notes/day-17.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 9/9 passing.
+* Full curl regression: `GetAll`/`GetById`/`Create`/`Delete`/invalid-`Create`/pagination — all identical to the synchronous version's behavior.
+* Not verified live today: an actual mid-request cancellation (network-level simulation deemed unreliable to demonstrate) — the wiring is confirmed correct, the live-cancellation scenario is deferred.
+
+**Evidence:** Working, verified async conversion with no behavior change; commit (pending); English/Turkish technical explanation (CancellationToken auto-binding mechanism, `Task.FromResult` as interface-satisfaction-without-real-async); independent task completed (IDE-suggested code, explained and understood afterward rather than accepted uncritically) and re-verified.
+
+**Mistakes or difficulties:** None blocking. Worth noting explicitly: code suggested by an IDE/AI tool was treated the same as self-written code — verified it built and passed, then required a full explanation before accepting it as understood, consistent with the "no passive copy-paste" principle even when the source of the suggestion isn't the mentor.
+
+**Production considerations:** `InMemoryProductStore`'s async is cosmetic (interface consistency only, no real concurrency benefit) — worth remembering when reasoning about actual performance later. `CancellationToken` plumbing is now in place for when StockPilot's queries eventually become long enough for early-abort to matter in practice.
+
+**Understanding questions and answers:**
+1. Q: Why does `InMemoryProductStore` still need `Task.FromResult(...)`? A: Because it implements `IProductStore`, whose contract requires `Task<T>` return types — omitting it would be a compile error, regardless of whether real async work exists.
+2. Q: Where does a controller's `CancellationToken` parameter get its value from? A: Automatically from `HttpContext.RequestAborted`, via ASP.NET Core's special-cased model binding for that type — no attribute required.
+3. Q: Is it a problem that async wasn't introduced until now? A: No — it was deliberately deferred until its scheduled topic (Week 4), consistent with `CLAUDE.md`'s "don't introduce a concept before it's needed" principle; RoadmapOS's Day 4 EF Core introduction was kept synchronous for the same reason (avoid stacking too many new concepts in one session).
+
+**Independent task:** Write a test for the `search` filter. Completed (IDE-suggested, then explained and verified line-by-line by Berkan rather than accepted blindly); re-verified by Claude (9/9 passing).
+
+**Next session:** Phase 2, Week 4, Day 18 (Wednesday — persistence/infrastructure) — database constraints and SQL indexes, most likely a unique index on `Product.Sku`.
