@@ -842,3 +842,43 @@ Copy this template for each new entry:
 **Independent task:** Add an assertion proving `Sku` is unchanged after `Update` (since `UpdateProductRequest` has no `Sku` field). Completed — written by Claude directly, at Berkan's explicit one-time request ("bu seferlik") rather than Berkan implementing it himself; verified (13/13 passing, including the new assertion).
 
 **Next session:** Phase 2, Week 4 (extended), Day 22 (if needed) or Week 5 — depending on how much of Week 4's remaining topic list (transactions, query analysis) still needs dedicated time versus being folded into a shorter check-in before moving on to authentication.
+
+### 2026-09-14 — Phase 2, Week 4 (extended), Day 22 (Week 4 closed)
+
+**Topic:** Database transactions (implicit vs. explicit) and query analysis (`AsNoTracking()`) — Week 4's final topics.
+
+**Problem solved:** A batch "add many products at once" operation had no atomicity — looping the existing single-item `AddAsync` (each with its own `SaveChangesAsync`) meant a mid-batch failure would leave earlier items permanently committed. Wrapped the batch in one explicit transaction so it behaves as "all or nothing." Separately, read-only queries (`GetAll`) were paying for EF Core's change tracker recording every row for no reason, since that data is never subsequently saved.
+
+**What I learned:** The two questions that didn't land on the first pass needed a second, more careful explanation: (1) exactly which two lines create the transaction boundary and why `await using`'s automatic disposal — without a `CommitAsync()` having been reached — is what triggers the rollback, regardless of what specifically caused the exception; (2) why `AsNoTracking()` is safe on `GetAllAsync` (pure display, never re-saved) but deliberately not added to `GetByIdAsync` (reused by `RemoveAsync` to find the entity it then deletes, which needs a tracked instance); (3) why a single `Create`/`AddAsync` never needed an explicit transaction at all — EF Core already wraps one `SaveChangesAsync()` call in its own implicit transaction, so a single insert is already atomic on its own, while `AddRangeAsync`'s loop makes several *independent* implicit transactions (each committing the moment its own `SaveChangesAsync` succeeds) that have no shared atomicity unless explicitly tied together. Also learned, via a live-verified wrong prediction on the independent task, that a `foreach` over an empty collection simply runs zero times — no exception, no database write attempted at all, so nothing can be rejected.
+
+**What I implemented:**
+* `IProductStore.AddRangeAsync` (both implementations); `EfProductStore.AddRangeAsync` opens `BeginTransactionAsync()`, loops the existing `AddAsync`, then `CommitAsync()` — relying on automatic rollback-on-dispose if anything throws before commit. `InMemoryProductStore.AddRangeAsync` is a plain loop with no real transaction concept, honestly documented as untestable for the atomicity guarantee.
+* `ProductsController.BulkCreate` (`POST /api/products/bulk`) — `201` with the full created list (no single `Location` header, since multiple resources exist) or `409` via the same `DbUpdateException` catch as single `Create`.
+* `EfProductStore.GetAllAsync` gained `.AsNoTracking()`; `GetByIdAsync` deliberately left tracked.
+* 1 new test (`BulkCreate_ValidRequests_AddsAllProducts`), scoped to the no-conflict path only.
+
+**Runtime flow:** `POST /api/products/bulk` (3 items, 2nd duplicate) → transaction opens → item 1 added (its own `SaveChangesAsync`) → item 2's `SaveChangesAsync` throws `DbUpdateException` (unique index) → `CommitAsync` never reached → `await using` disposes the transaction → automatic rollback undoes item 1 too → exception propagates to the controller → 409, nothing persisted. Full trace, including both live demonstrations, in `docs/daily-code-notes/day-22.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 14/14 passing.
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live bug demonstration: transaction temporarily removed → posted a 3-item batch with a duplicate SKU in the middle → API returned 409 but a direct query proved the first item had been permanently written (real partial-commit bug, caught live). Transaction restored, leaked row cleaned up, same batch re-posted → nothing persisted (full rollback); a fully valid batch → 201, both items added.
+* `AsNoTracking()`'s effect proven live against the real database via a temporary test file (`TempChangeTrackerDemo.cs`, deleted right after): with it, `ChangeTracker.Entries().Count()` was 0; without it, it matched the row count.
+* Independent task, done live together after an incorrect prediction: `POST /api/products/bulk` with `[]` was predicted to throw `DbUpdateException`; it actually returns `HTTP 201` with an empty body, since the loop runs zero times and no write is ever attempted.
+
+**Evidence:** A real, live-triggered-then-fixed atomicity bug (not just described abstractly); a live-proven `AsNoTracking()` mechanism; an honestly-scoped test suite; commit (`c740af7` for code/day-22.md; this `CURRENT_STATE.md`/`LEARNING_LOG.md` update follows separately); a live-verified incorrect prediction on the independent task, corrected together rather than left unresolved.
+
+**Mistakes or difficulties:** Two of the three original understanding questions ("bilmiyorum") and the independent task's prediction (`DbUpdateException`, actually 201) were all wrong on the first attempt — consistent with this topic (transactions/tracking internals) needing more concrete, mechanism-level explanation than surface-level EF Core usage did on earlier days. All three were corrected via direct explanation and, for the independent task, a live joint test rather than left as unresolved gaps.
+
+**Production considerations:** The explicit-transaction pattern here (loop existing single-item logic, wrap in one transaction) is a genuinely reusable shape for any future "bulk" operation, not specific to products. The empty-array edge case (`201` on `[]`) is a real, observed design question — arguably a `400 Bad Request` would be more meaningful — noted but deliberately not fixed today.
+
+**Understanding questions and answers:**
+1. Q: Why does removing `CommitAsync()` (e.g. via a mid-loop exception) cause an automatic rollback? A: Not known initially; explained: `await using` guarantees the transaction's dispose method runs no matter how the block exits, and EF Core's transaction dispose logic specifically rolls back if `CommitAsync()` was never reached — this triggers regardless of what caused the exception, not just a duplicate-SKU-specific case.
+2. Q: Why `AsNoTracking()` on `GetAllAsync` but not `GetByIdAsync`? A: Not known initially; explained: `GetAllAsync`'s results are only ever displayed; `GetByIdAsync`'s result is reused by `RemoveAsync` to find and then delete the entity, which needs it tracked.
+3. Q: Why does a single `AddAsync` never need an explicit transaction while `AddRangeAsync` does? A: Not known initially; explained: one `SaveChangesAsync()` call is already auto-wrapped by EF Core in its own implicit transaction (already atomic on its own); a loop of several `AddAsync` calls is several *separate* implicit transactions, each committing independently, with no shared atomicity across them unless explicitly tied together.
+
+**Independent task:** Predict then verify what `POST /api/products/bulk` with an empty array (`[]`) does. Completed together live: predicted `DbUpdateException`, actual result was `HTTP 201` with an empty body — incorrect prediction, corrected via live verification, with the reason (a `foreach` over an empty collection runs zero times, so no write is ever attempted) explained afterward.
+
+**Week 4 is complete.** Days 16-22 covered EF Core + SQL Server persistence, async conversion, a unique index with a two-layer 409 defense, optimistic concurrency (`RowVersion`), and transactions + query analysis. "Stock-reservation rules" (originally on Week 4's topic list) remains explicitly deferred until an `Order` domain exists.
+
+**Next session:** Phase 2, Week 5, Day 23 — Authentication vs. authorization, JWT access tokens (first topic on Week 5's list).

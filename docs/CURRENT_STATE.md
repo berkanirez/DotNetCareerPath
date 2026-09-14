@@ -6,12 +6,12 @@ This file reflects the actual current state of the learning journey. It must alw
 
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
-* **Week:** 4 (extended by 1-2 days; see below)
-* **Day:** 21 (complete)
+* **Week:** 4 — complete (closed on Day 22)
+* **Day:** 22 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** Update (PUT) endpoint added with optimistic concurrency via a real SQL Server `RowVersion` column; a genuine concurrency conflict was triggered and correctly rejected (409) live against the actual database (`sqlcmd` + `curl`), not just unit-tested. 13/13 tests passing.
+* **Status:** `POST /api/products/bulk` added with an explicit transaction (atomic "all or nothing" batch create) and `AsNoTracking()` added to read-only queries; the partial-commit bug was triggered live without the transaction, then proven fixed with it; `AsNoTracking()`'s real effect on the change tracker was proven live against the real database. **Week 4 is now closed** — next session begins Week 5 (Authentication). 14/14 tests passing.
 * **Available study time:** 2 hours/day
-* **Progress:** ~19% (Day 21 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~20% (Day 22 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -170,7 +170,18 @@ This file reflects the actual current state of the learning journey. It must alw
 * Understanding questions needed a second, concrete pass (a named two-person timestamped example, plus a `git push`/`pull` analogy for optimistic vs. pessimistic concurrency) before landing; also clarified `DbUpdateConcurrencyException` is a built-in EF Core type and specifically a subclass of Day 19's `DbUpdateException`.
 * `docs/daily-code-notes/day-21.md` created (Turkish).
 * Independent task (an assertion proving `Sku` survives `Update` untouched) completed by Claude directly, at Berkan's explicit one-time request, rather than by Berkan himself; verified (13/13 passing).
-* Day 21 changes not yet committed (pending Berkan's confirmation).
+* Day 21 changes committed by Berkan (`d681355`).
+* `IProductStore.AddRangeAsync` added (both implementations); `EfProductStore.AddRangeAsync` wraps its loop of `AddAsync` calls in one explicit transaction (`BeginTransactionAsync`/`CommitAsync`), giving "all or nothing" atomicity across multiple otherwise-independent implicit transactions.
+* `ProductsController`: `POST /api/products/bulk` added, returning `201` (no single `Location` header, since multiple resources are created) or `409` (via the same `DbUpdateException` catch pattern as single `Create`) if any item in the batch fails.
+* `EfProductStore.GetAllAsync` gained `.AsNoTracking()` (read-only, never re-saved); `GetByIdAsync` deliberately left tracked, since `RemoveAsync` reuses it to find the entity it then deletes.
+* Live bug demonstration: the transaction was temporarily removed, a 3-item batch with a duplicate SKU in the middle was posted, the API correctly returned 409 but the first item had still been permanently written to the database (proven via a direct query) — a real, live-triggered partial-commit bug. The transaction was restored, the leaked row cleaned up, and the same batch re-tested: this time nothing was persisted (full rollback), and a fully valid batch still succeeded normally (201, all items added).
+* `AsNoTracking()`'s actual effect was proven live against the real database via a temporary test file (`TempChangeTrackerDemo.cs`, deleted immediately after): with it, `ChangeTracker.Entries().Count()` was 0; without it, it equaled the row count.
+* 1 new test added (`BulkCreate_ValidRequests_AddsAllProducts`), honestly scoped to the no-conflict path only — `InMemoryProductStore`'s `AddRangeAsync` has no real transaction/rollback concept, so the atomic-rollback behavior is real and verified only against `EfProductStore`, live.
+* `docs/daily-code-notes/day-22.md` created (Turkish).
+* Understanding questions needed a full explanation from Claude (Berkan answered "bilmiyorum"/partial on 2 of 3) before landing: the `await using`-triggers-automatic-rollback mechanism, why `AsNoTracking()` is safe on `GetAllAsync` but not `GetByIdAsync`, and why a single `AddAsync` never needed an explicit transaction while `AddRangeAsync` does (one `SaveChangesAsync` call is already auto-wrapped in its own implicit transaction; three separate calls are three separate implicit transactions with no shared atomicity unless explicitly wrapped).
+* Independent task: predicted an empty-array `POST /api/products/bulk` would throw `DbUpdateException`; live test showed it actually returns `HTTP 201` with an empty `[]` body (the `foreach` loop simply runs zero times — no database write is ever attempted, so nothing can be rejected). Incorrect prediction, corrected via live verification together; noted as an observed (not fixed) edge case — an empty batch might arguably deserve a `400 Bad Request` instead, out of today's scope.
+* Day 22 code and `day-22.md` committed by Berkan (`c740af7`); this `CURRENT_STATE.md`/`LEARNING_LOG.md` update follows separately.
+* **Week 4 is complete.** Days 16-22 covered: EF Core + SQL Server persistence, async conversion, unique index + two-layer 409 defense, optimistic concurrency (`RowVersion`), and transactions + query analysis (`AsNoTracking()`). "Stock-reservation rules" (originally on Week 4's topic list) remains explicitly deferred until an `Order` domain exists — not part of Week 4's closure.
 
 ## Decisions on record
 
@@ -196,12 +207,11 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 4 (extended), Day 22 (if needed): transactions and/or query analysis — Week 4's remaining topic-list items. "Stock-reservation rules" stays out of scope until an `Order` domain exists. Exact scope (a full day vs. a shorter check-in before moving to Week 5) to be decided in the day's plan.
+2. Begin Phase 2, Week 5, Day 23: Authentication vs. authorization, JWT access tokens — the first topic on Week 5's list (`docs/ROADMAP.md`: JWT access token, refresh token, refresh-token rotation, role-based authorization, policy-based authorization, security failure cases).
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 4 / Day 22 expected outcome (if needed)
+## Week 5 / Day 23 expected outcome
 
-* A first, real touch of either database transactions (e.g. wrapping a multi-step write in an explicit transaction) or query analysis (inspecting/reasoning about actual generated SQL and its execution plan) — whichever fits a 2-hour slice better.
-* Full regression across both solutions after any change.
-* A close-out check for Week 4 as a whole (mirroring RoadmapOS Day 10's pattern) before moving to Week 5 (Authentication).
+* First touch of authentication in StockPilot: likely a minimal user/credential concept plus JWT issuance on successful login, and at least one protected endpoint requiring a valid token.
+* Exact scope for a 2-hour slice (how much of login/token-issuance/`[Authorize]` fits together) to be finalized in the day's plan — full JWT refresh-token rotation and role/policy-based authorization are expected to span multiple days, not all of Day 23.
 
