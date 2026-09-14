@@ -733,3 +733,112 @@ Copy this template for each new entry:
 **Independent task:** Add a new, non-conflicting SKU and confirm it succeeds normally. Completed and independently verified by Berkan (`SKU-009`); re-verified by Claude via direct SQL query.
 
 **Next session:** Phase 2, Week 4, Day 19 (Thursday — tests, failures, production considerations) — close the 500→409 gap left open today, with a test proving the fix.
+
+### 2026-09-13 — Phase 2, Week 4, Day 19
+
+**Topic:** Closing Day 18's 500→409 gap with a two-layer defense (proactive check + reactive exception handling).
+
+**Problem solved:** Duplicate-SKU `POST` requests returned a raw, incorrectly-coded `500` (proven live on Day 18). Implemented a proactive `SkuExistsAsync` check (fast, correct for the common case) plus a `try`/`catch (DbUpdateException)` safety net (correct for the rare concurrent-request race), both returning `409 Conflict`.
+
+**What I learned:** Confirmed, in Berkan's own words and correctly, why neither layer alone suffices — the proactive check alone still races under concurrency (both requests can pass the check before either commits), and the catch alone would force every ordinary duplicate attempt through an unnecessary database round-trip and exception just to detect something a cheap check could catch first. Also clarified precisely why only Layer 1 is unit-testable today: `InMemoryProductStore.AddAsync` never validates anything and never throws — `DbUpdateException` is inherently an EF Core/SQL Server concept, so a test built on `InMemoryProductStore` structurally cannot reach Layer 2's catch block; testing it for real would require a genuine concurrent race against real SQL Server, which is inherently hard to trigger deterministically in an automated test.
+
+**What I implemented:**
+* `IProductStore.SkuExistsAsync`, implemented in both `EfProductStore` (`AnyAsync`) and `InMemoryProductStore` (`foreach`).
+* `ProductsController.Create`: Layer 1 (`SkuExistsAsync` check → `Conflict(...)`) before attempting `AddAsync`; Layer 2 (`try`/`catch (DbUpdateException)` → `Conflict(...)`) around it.
+* `Create_DuplicateSku_ReturnsConflict` test (Layer 1 only, explicitly documented as such in a code comment).
+* Independent task: `Create_NonDuplicateSku_StillSucceeds` — a regression test confirming the new checks don't affect the normal, non-duplicate path.
+
+**Runtime flow:** `POST /api/products` (duplicate SKU) → `SkuExistsAsync` returns `true` → immediate `Conflict(...)`, `AddAsync` never even attempted. Rare race case: both layer-1 checks pass concurrently → both attempt `AddAsync` → one succeeds, the other's `SaveChangesAsync` throws `DbUpdateException` → caught → `Conflict(...)`. Full trace in `docs/daily-code-notes/day-19.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 11/11 passing (2 new tests).
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live curl: duplicate SKU → HTTP 409 with a clear message (gap closed); fresh SKU → still HTTP 201 (no regression).
+
+**Evidence:** A correctly-scoped, two-layer fix for a previously-documented gap; passing test suite with an honestly-scoped test (one layer covered, one layer explicitly not, with the reason stated in code and docs); commit (pending); English/Turkish technical explanation, largely self-generated correctly by Berkan this session; independent task completed and re-verified.
+
+**Mistakes or difficulties:** None blocking. This session leaned more on Berkan supplying correct reasoning himself (Q1 and Q3 answered correctly and precisely unprompted) — a good sign of the two-layer defense-in-depth concept and HTTP status semantics landing solidly from repeated exposure across Days 13/18/19.
+
+**Production considerations:** The two-layer pattern here (cheap proactive check + DB constraint as final authority, caught and translated) is a genuinely reusable shape for any "uniqueness" business rule going forward, not specific to `Sku`.
+
+**Understanding questions and answers:**
+1. Q: Why both layers, not just one? A: Check-only still races under concurrency (both requests could pass before either commits); catch-only forces every ordinary duplicate through a wasteful DB round-trip and exception. (Answered correctly, unprompted.)
+2. Q: Why can only Layer 1 be unit-tested today? A: `InMemoryProductStore` never throws `DbUpdateException` (no real DB underneath it) — Layer 2 requires a genuine EF Core/SQL Server rejection, which a plain in-memory test double structurally cannot produce; testing it for real would need a hard-to-trigger genuine race against real SQL Server.
+3. Q: `Conflict` (409) vs. `NotFound` (404)? A: 404 means the requested resource doesn't exist in the data at all; 409 means the request conflicts with existing data — here, specifically that a uniqueness rule (SKU) would be violated. (Answered correctly, unprompted.)
+
+**Independent task:** Add a regression test proving non-duplicate creates still succeed. Completed and independently verified by Berkan (`Create_NonDuplicateSku_StillSucceeds`); re-verified by Claude (11/11 passing).
+
+**Next session:** Phase 2, Week 4, Day 20 (Friday — refactor, full verification, documentation, demonstration, evidence, closing out Week 4).
+
+### 2026-09-13 — Phase 2, Week 4, Day 20
+
+**Topic:** Refactor, full clean-build verification, honest Week 4 status review — no new domain concept introduced today.
+
+**Problem solved:** Two identical duplicate-SKU conflict messages had been written by hand, once per defense layer, in `ProductsController.Create` (Day 19) — a small but real maintenance risk (one could be edited without the other being updated to match). Also confirmed, from a genuinely clean state, that both StockPilot and RoadmapOS still build and pass all tests, and produced an honest accounting of what Week 4's original topic list actually covered versus what still needs more time.
+
+**What I learned:** That surfacing a scheduling conflict explicitly (Week 4's remaining topics — Update/optimistic concurrency, transactions, query analysis, stock-reservation rules — couldn't honestly fit in the originally-scheduled last day) and asking rather than silently cramming, skipping, or unilaterally deciding is itself the correct application of `CLAUDE.md`'s "don't advance before Definition of Done" rule, not a delay of it; that "stock-reservation rules" specifically is blocked on a domain concept (`Order`) that doesn't exist yet in StockPilot, so it isn't really a Week 4/Day 21/22 task at all, but a marker for whenever the Order side of the API actually begins.
+
+**What I implemented:**
+* Clean-build verification: `bin`/`obj` deleted across all 4 projects (both solutions), rebuilt from scratch — StockPilot 0 errors/warnings, 11/11 tests; RoadmapOS 0 errors/warnings, 8/8 tests.
+* `ProductsController.Create` refactor: the duplicated `$"A product with SKU '{request.Sku}' already exists."` string (written identically in the Layer 1 proactive-check branch and the Layer 2 `catch (DbUpdateException)` branch) extracted into a single `duplicateSkuMessage` local variable, computed once and reused by both `return Conflict(...)` calls.
+* Regression check after the refactor: rebuilt and retested — 0 errors/warnings, 11/11 passing, unchanged from before the refactor.
+* Week 4 status review (no code): Days 16-19 confirmed complete; Update (PUT) endpoint + optimistic concurrency carried to Day 21; transactions/query analysis carried to Day 21 or Day 22 if needed; stock-reservation rules explicitly flagged as dependent on a not-yet-built `Order` domain, deferred well beyond Week 4.
+
+**Runtime flow:** No behavior change — `Create`'s two conflict-response paths still return the exact same message as before, just computed once instead of twice. Full detail in `docs/daily-code-notes/day-20.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot, from a clean `bin`/`obj` state) → 0 errors/warnings, 11/11 passing.
+* `dotnet build`/`dotnet test` (RoadmapOS, from a clean `bin`/`obj` state) → 0 errors/warnings, 8/8 passing.
+* Post-refactor regression: rebuilt/retested again → identical result (11/11), confirming the refactor changed nothing observable.
+
+**Evidence:** A verified, clean-checkout build/test pass for both solutions; a small, correctly-scoped refactor removing real (if minor) duplication; an honest, explicit Week 4 status accounting rather than a silently-inflated "done" claim; commit (pending).
+
+**Mistakes or difficulties:** None blocking. This was a deliberately light day by design — Week 4's remaining scope genuinely didn't fit its original last-day slot, and the correct response was to say so plainly (via a direct question to Berkan) rather than force it.
+
+**Production considerations:** The `duplicateSkuMessage` pattern (compute a user-facing message once, reuse it across every return path that needs it) is a small but genuinely reusable shape for any endpoint with more than one path to the same conflict outcome — not specific to `Sku`.
+
+**Understanding questions and answers:** Three questions were posed (why a local variable over a private helper method for `duplicateSkuMessage`; why "stock-reservation rules" doesn't belong on Day 21/22's list at all; what would go wrong by cramming Week 4's remaining topics into today instead of extending the timeline) — not answered today; Berkan chose to skip straight to the next session instead.
+
+**Independent task:** None assigned/completed today — Berkan explicitly asked to skip it and move to the next session. Recorded here rather than silently omitted, per the "don't hide known gaps" principle.
+
+**Next session:** Phase 2, Week 4, Day 21 — Update (PUT) endpoint on `ProductsController` plus optimistic concurrency (a `RowVersion`/concurrency token on `Product`).
+
+### 2026-09-14 — Phase 2, Week 4 (extended), Day 21
+
+**Topic:** Update (PUT) endpoint and optimistic concurrency via a `RowVersion` concurrency token.
+
+**Problem solved:** Nothing let a product be updated at all (only Create/Delete existed). Adding Update introduces a new risk absent from Create/Delete: two clients editing the same product concurrently, one silently overwriting the other's change (a "lost update"). Implemented `RowVersion`-based optimistic concurrency so a stale write is rejected (409) instead of silently succeeding.
+
+**What I learned:** The first explanation of the `OriginalValue` line and the understanding questions landed too abstractly on the first pass — a concrete, named, timestamped walkthrough (Ayşe and Mehmet both reading `Price=19.99`/`RowVersion=v1`, Ayşe's update succeeding and bumping the row to `v2`, Mehmet's later update with his now-stale `v1` failing) was needed before the mechanism actually clicked. Also clarified two points precisely: `DbUpdateConcurrencyException` is a built-in EF Core type (not something written today), and it is specifically a *subclass* of Day 19's `DbUpdateException` (`DbUpdateConcurrencyException : DbUpdateException`) — same family, different specific cause (concurrency-token mismatch vs. Day 19's unique-index violation). The optimistic-vs-pessimistic distinction landed via a `git push`/`git pull` analogy: everyone edits their own copy freely (no lock), and a conflict is only detected at "push" (`PUT`) time against the branch's actual current state.
+
+**What I implemented:**
+* `Product.RowVersion` (`byte[]`, `= null!`) — a real SQL Server `rowversion` column, not application data.
+* `StockPilotDbContext`: `entity.Property(p => p.RowVersion).IsRowVersion();`; `AddProductRowVersion` migration created and applied.
+* `ProductDto` gained `RowVersion` (so a client can read the token it needs to send back).
+* `Models/UpdateProductRequest.cs` — `Name`, `Price`, `RowVersion` (deliberately no `Sku`, to avoid reopening Day 18/19's uniqueness topic inside an unrelated concurrency-focused day).
+* `IProductStore.UpdateAsync` added to both implementations: `EfProductStore` sets the client-supplied `rowVersion` as the tracked entity's `OriginalValue` before `SaveChangesAsync`, so the generated `UPDATE`'s `WHERE` clause checks the client's held version, not whatever `FindAsync` just re-read; `InMemoryProductStore` ignores `rowVersion` entirely (no real database underneath it to check against — an explicitly honest limitation, mirroring Day 19's Layer 2 gap).
+* `ProductsController.Update` (`[HttpPut("{id}")]`) — `NotFound()` for a missing id, `catch (DbUpdateConcurrencyException)` → `Conflict(...)` (409) for a stale write, `Ok(...)` otherwise.
+* 2 new tests (`Update_ExistingId_ReturnsUpdatedProduct`, `Update_MissingId_ReturnsNotFound`), both only exercising `InMemoryProductStore`'s no-conflict path, honestly documented as such.
+* Independent task (written by Claude at Berkan's explicit one-time request, not by Berkan himself): added `Assert.Equal("SKU-001", dto.Sku)` to `Update_ExistingId_ReturnsUpdatedProduct`, proving `Sku` survives an update untouched since `UpdateProductRequest` carries no `Sku` field at all.
+
+**Runtime flow:** `PUT /api/products/1` → `EfProductStore.UpdateAsync` fetches the current row, marks the client's `rowVersion` as the row's expected original value, updates `Name`/`Price`, calls `SaveChangesAsync` → EF Core emits `UPDATE Products SET ... WHERE Id=1 AND RowVersion=@clientsValue` → if the real current `RowVersion` differs (someone else wrote since the client's last read), zero rows match and `DbUpdateConcurrencyException` is thrown → controller returns 409. Full trace, including the live Ayşe/Mehmet-style demonstration, in `docs/daily-code-notes/day-21.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 13/13 passing (2 new, plus the independent-task assertion).
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live proof against the real database (`sqlcmd` + `curl`): `GET /api/products/1` captured `RowVersion`; a direct SQL touch on the same row bumped it; a `PUT` using the now-stale `RowVersion` → HTTP 409 (conflict correctly detected); a `PUT` using the fresh `RowVersion` → HTTP 200 (normal update still works); a `GET` on a missing id → still HTTP 404 (no regression). Product 1 restored to its original values afterward.
+
+**Evidence:** A real, live-proven optimistic-concurrency mechanism (not just unit-tested, since the in-memory test double structurally can't reach it); an honestly-scoped test suite (conflict path proven live, not automated, with the reason stated); commit (pending); English/Turkish technical explanation (needed a concrete, named walkthrough on the second pass before landing); independent task completed by Claude this one time, at Berkan's explicit request, rather than by Berkan himself.
+
+**Mistakes or difficulties:** The first pass at explaining `OriginalValue`, optimistic-vs-pessimistic, and the `DbUpdateConcurrencyException`/`DbUpdateException` relationship was too abstract — none of the three understanding questions were answerable from it. A concrete, timestamped two-person example plus a `git push`/`pull` analogy was needed before they landed. Worth continuing to front-load concrete examples for new EF Core mechanisms by default, rather than starting abstract.
+
+**Production considerations:** The `RowVersion` mechanism itself is fully production-grade (a real SQL Server `rowversion` column, not a demo shortcut). `Sku` is deliberately excluded from `Update` today, a scope choice rather than a limitation — a future session would need to re-run Day 18/19's uniqueness reasoning if `Sku` editing is ever added. The concurrency-conflict path is unverifiable by an automated unit test today (same class of gap as Day 19's Layer 2) since `InMemoryProductStore` has no real database to disagree with.
+
+**Understanding questions and answers:**
+1. Q: What would happen if the `OriginalValue` line were removed — why would `UpdateAsync` then never detect a conflict? A: Not answered correctly on the first attempt; required a concrete two-person example (Ayşe/Mehmet) before the mechanism was understood — without that line, EF Core builds the `WHERE` clause from the entity's currently-tracked `RowVersion` (just re-read by `FindAsync`), which always matches the database's real current value, so the check can never fail.
+2. Q: Why is optimistic concurrency not a "lock"? A: Not known initially; landed via a `git push`/`pull` analogy — everyone edits their own copy freely with no waiting, and a conflict is only discovered at the moment of writing back, exactly like a rejected `git push` when the local branch is behind.
+3. Q: Where does `DbUpdateConcurrencyException` come from, and how does it relate to Day 19's `DbUpdateException`? A: Not known initially, then clarified: it's a built-in EF Core type (not written by us), and specifically a subclass of `DbUpdateException` — same family (a database rejected a write), different specific cause (concurrency-token mismatch here vs. unique-index violation on Day 19).
+
+**Independent task:** Add an assertion proving `Sku` is unchanged after `Update` (since `UpdateProductRequest` has no `Sku` field). Completed — written by Claude directly, at Berkan's explicit one-time request ("bu seferlik") rather than Berkan implementing it himself; verified (13/13 passing, including the new assertion).
+
+**Next session:** Phase 2, Week 4 (extended), Day 22 (if needed) or Week 5 — depending on how much of Week 4's remaining topic list (transactions, query analysis) still needs dedicated time versus being folded into a shorter check-in before moving on to authentication.

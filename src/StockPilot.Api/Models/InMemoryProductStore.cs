@@ -52,6 +52,23 @@ public class InMemoryProductStore : IProductStore
         return Task.FromResult(product);
     }
 
+    // No real database underneath, so there is no actual concurrency token to
+    // check against — rowVersion is accepted (to satisfy IProductStore) but
+    // intentionally ignored. This store can never throw a concurrency
+    // conflict; that behavior is only real and only testable against EfProductStore.
+    public async Task<Product?> UpdateAsync(int id, string name, decimal price, byte[] rowVersion, CancellationToken cancellationToken = default)
+    {
+        var product = await GetByIdAsync(id, cancellationToken);
+        if (product is null)
+        {
+            return null;
+        }
+
+        product.Name = name;
+        product.Price = price;
+        return product;
+    }
+
     public async Task<bool> RemoveAsync(int id, CancellationToken cancellationToken = default)
     {
         var product = await GetByIdAsync(id, cancellationToken);

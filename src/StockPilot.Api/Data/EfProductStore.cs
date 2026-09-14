@@ -34,6 +34,29 @@ public class EfProductStore : IProductStore
         return product;
     }
 
+    public async Task<Product?> UpdateAsync(int id, string name, decimal price, byte[] rowVersion, CancellationToken cancellationToken = default)
+    {
+        var product = await _context.Products.FindAsync([id], cancellationToken);
+        if (product is null)
+        {
+            return null;
+        }
+
+        // Tell EF Core "this is the version I actually read" rather than trusting
+        // whatever FindAsync just returned — the WHERE clause SaveChangesAsync
+        // generates compares THIS value against the database's current row,
+        // not the value already sitting on the tracked entity. If another
+        // request updated the row since our client last read it, no rows match
+        // and SaveChangesAsync throws DbUpdateConcurrencyException.
+        _context.Entry(product).Property(p => p.RowVersion).OriginalValue = rowVersion;
+
+        product.Name = name;
+        product.Price = price;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return product;
+    }
+
     public async Task<bool> RemoveAsync(int id, CancellationToken cancellationToken = default)
     {
         var product = await GetByIdAsync(id, cancellationToken);

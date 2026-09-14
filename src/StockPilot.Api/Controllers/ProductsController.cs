@@ -64,11 +64,13 @@ public class ProductsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ProductDto>> Create(CreateProductRequest request, CancellationToken cancellationToken = default)
     {
+        var duplicateSkuMessage = $"A product with SKU '{request.Sku}' already exists.";
+
         // Layer 1 (proactive): the common case — reject an obvious duplicate
         // before ever touching the database's write path.
         if (await _productStore.SkuExistsAsync(request.Sku, cancellationToken))
         {
-            return Conflict($"A product with SKU '{request.Sku}' already exists.");
+            return Conflict(duplicateSkuMessage);
         }
 
         var product = new Product(request.Sku, request.Name, request.Price);
@@ -82,11 +84,35 @@ public class ProductsController : ControllerBase
             // Layer 2 (reactive safety net): a rare race — two concurrent
             // requests both passed the check above before either committed.
             // The database's own unique index is the final authority.
-            return Conflict($"A product with SKU '{request.Sku}' already exists.");
+            return Conflict(duplicateSkuMessage);
         }
 
         var dto = ToDto(product);
         return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
+    }
+
+    [HttpPut("{id}")]
+    public async Task<ActionResult<ProductDto>> Update(int id, UpdateProductRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var product = await _productStore.UpdateAsync(id, request.Name, request.Price, request.RowVersion, cancellationToken);
+            if (product is null)
+            {
+                return NotFound();
+            }
+
+            return Ok(ToDto(product));
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Someone else updated (or deleted) this product between our
+            // client's last read and this request — the RowVersion it sent
+            // no longer matches what's in the database. Not a server fault:
+            // the client's data is stale, so 409 (not 500) is correct, same
+            // reasoning as Day 19's duplicate-SKU Conflict responses.
+            return Conflict("The product was modified by another request since it was last read. Reload it and try again.");
+        }
     }
 
     [HttpDelete("{id}")]
@@ -102,5 +128,5 @@ public class ProductsController : ControllerBase
     }
 
     private static ProductDto ToDto(Product product) =>
-        new(product.Id, product.Sku, product.Name, product.Price);
+        new(product.Id, product.Sku, product.Name, product.Price, product.RowVersion);
 }

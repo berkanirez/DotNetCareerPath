@@ -154,4 +154,32 @@ public class ProductsControllerTests
         var dto = Assert.IsType<ProductDto>(created.Value);
         Assert.Equal("SKU-010", dto.Sku);
     }
+
+    [Fact]
+    public async Task Update_ExistingId_ReturnsUpdatedProduct()
+    {
+        // InMemoryProductStore ignores rowVersion entirely (no real database
+        // underneath it, so no real concurrency token to check) — this test
+        // only proves the ordinary, non-conflicting update path.
+        var controller = CreateController();
+        var request = new UpdateProductRequest("Updated Mouse", 29.99m, new byte[] { 1 });
+
+        var result = await controller.Update(1, request);
+
+        var dto = Assert.IsType<ProductDto>(((OkObjectResult)result.Result!).Value);
+        Assert.Equal("Updated Mouse", dto.Name);
+        Assert.Equal(29.99m, dto.Price);
+        Assert.Equal("SKU-001", dto.Sku); // UpdateProductRequest carries no Sku, so it must stay untouched.
+    }
+
+    [Fact]
+    public async Task Update_MissingId_ReturnsNotFound()
+    {
+        var controller = CreateController();
+        var request = new UpdateProductRequest("Doesn't matter", 10.00m, new byte[] { 1 });
+
+        var result = await controller.Update(999, request);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
 }

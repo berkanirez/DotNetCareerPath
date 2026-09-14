@@ -5,13 +5,13 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Status snapshot
 
 * **Setup phase:** Complete
-* **Roadmap phase:** Phase 1 — RoadmapOS
-* **Week:** 1
-* **Day:** 19 (complete)
+* **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
+* **Week:** 4 (extended by 1-2 days; see below)
+* **Day:** 21 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** Day 18's 500→409 gap closed with a two-layer defense (proactive `SkuExistsAsync` check + reactive `DbUpdateException` catch); verified live and via 11/11 passing tests (2 new).
+* **Status:** Update (PUT) endpoint added with optimistic concurrency via a real SQL Server `RowVersion` column; a genuine concurrency conflict was triggered and correctly rejected (409) live against the actual database (`sqlcmd` + `curl`), not just unit-tested. 13/13 tests passing.
 * **Available study time:** 2 hours/day
-* **Progress:** ~18% (Day 19 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~19% (Day 21 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -155,6 +155,22 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-19.md` created (Turkish).
 * Independent task completed and verified: a new regression test (`Create_NonDuplicateSku_StillSucceeds`) confirming the new checks don't affect normal, non-duplicate creates; 11/11 tests passing.
 * Day 19 changes not yet committed (pending Berkan's confirmation).
+* Clean-checkout verification: `bin`/`obj` deleted across all 4 projects, both solutions rebuilt from scratch — StockPilot 0 errors/warnings (11/11 tests), RoadmapOS 0 errors/warnings (8/8 tests).
+* `ProductsController.Create` refactored: the duplicated `$"A product with SKU '{request.Sku}' already exists."` string extracted into a single `duplicateSkuMessage` local variable, reused by both `Conflict(...)` return paths (Layer 1 and Layer 2). Regression-checked afterward: 11/11 still passing, behavior unchanged.
+* Week 4 status reviewed and documented: Days 16-19 confirmed complete; Update (PUT) endpoint + optimistic concurrency carried to Day 21; transactions/query analysis carried to Day 21 or 22 if needed; "stock-reservation rules" identified as dependent on a not-yet-built `Order` domain and deferred well beyond Week 4, not just to Day 21/22.
+* `docs/daily-code-notes/day-20.md` created (Turkish).
+* Independent task skipped today at Berkan's explicit request (move straight to the next session) — recorded honestly rather than omitted.
+* Day 20 changes not yet committed (pending Berkan's confirmation).
+* `Product.RowVersion` added (`byte[]`, mapped via `IsRowVersion()`); `AddProductRowVersion` migration created and applied — a real SQL Server `rowversion` column, not application data.
+* `ProductDto` extended with `RowVersion` (so clients can read the token needed for a later update); `Models/UpdateProductRequest.cs` added (`Name`, `Price`, `RowVersion` — `Sku` deliberately excluded, out of today's scope).
+* `IProductStore.UpdateAsync` added to both implementations: `EfProductStore` sets the client-supplied `RowVersion` as the tracked entity's `OriginalValue` before `SaveChangesAsync`, so a real concurrency conflict throws `DbUpdateConcurrencyException`; `InMemoryProductStore` ignores `rowVersion` (no real database to check against — an explicitly honest limitation, same class as Day 19's Layer 2 gap).
+* `ProductsController.Update` (`[HttpPut("{id}")]`) added — `NotFound()`/`Conflict(...)` (409, on `DbUpdateConcurrencyException`)/`Ok(...)`.
+* 2 new tests added (`Update_ExistingId_ReturnsUpdatedProduct`, `Update_MissingId_ReturnsNotFound`), both covering only the no-conflict path (honestly documented — real conflicts can't be produced by `InMemoryProductStore`).
+* Live proof against the real database (`sqlcmd` + `curl`): captured a product's `RowVersion` via `GET`, touched the same row directly via SQL (bumping its `RowVersion`), then confirmed a `PUT` with the now-stale `RowVersion` returns HTTP 409 and a `PUT` with the fresh one returns HTTP 200; product restored to its original values afterward.
+* Understanding questions needed a second, concrete pass (a named two-person timestamped example, plus a `git push`/`pull` analogy for optimistic vs. pessimistic concurrency) before landing; also clarified `DbUpdateConcurrencyException` is a built-in EF Core type and specifically a subclass of Day 19's `DbUpdateException`.
+* `docs/daily-code-notes/day-21.md` created (Turkish).
+* Independent task (an assertion proving `Sku` survives `Update` untouched) completed by Claude directly, at Berkan's explicit one-time request, rather than by Berkan himself; verified (13/13 passing).
+* Day 21 changes not yet committed (pending Berkan's confirmation).
 
 ## Decisions on record
 
@@ -180,12 +196,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 4, Day 19 (Thursday — tests, failures, production considerations): close the gap deliberately left open on Day 18 — `Create` should catch the duplicate-SKU failure and return `409 Conflict` instead of a raw 500, with a test proving it. Time permitting, this is also the natural day to touch transactions/optimistic concurrency (still unscoped from Week 4's list); exact scope to be finalized in the day's plan.
+2. Begin Phase 2, Week 4 (extended), Day 22 (if needed): transactions and/or query analysis — Week 4's remaining topic-list items. "Stock-reservation rules" stays out of scope until an `Order` domain exists. Exact scope (a full day vs. a shorter check-in before moving to Week 5) to be decided in the day's plan.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 4 / Day 19 expected outcome
+## Week 4 / Day 22 expected outcome (if needed)
 
-* `Create` returns `409 Conflict` (not 500) for a duplicate SKU, with a clear error body.
-* A test proving this behavior (likely requiring a real EF Core exception to be triggered/caught, or an in-memory equivalent check — to be decided in the day's plan).
-* Remaining Week 4 topics after this: transactions, optimistic concurrency, query analysis, stock-reservation rules (Friday close-out likely covers whichever is left).
+* A first, real touch of either database transactions (e.g. wrapping a multi-step write in an explicit transaction) or query analysis (inspecting/reasoning about actual generated SQL and its execution plan) — whichever fits a 2-hour slice better.
+* Full regression across both solutions after any change.
+* A close-out check for Week 4 as a whole (mirroring RoadmapOS Day 10's pattern) before moving to Week 5 (Authentication).
 

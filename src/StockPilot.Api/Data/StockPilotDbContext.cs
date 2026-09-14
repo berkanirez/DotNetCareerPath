@@ -19,6 +19,7 @@ public class StockPilotDbContext : DbContext
             entity.Property(p => p.Name).IsRequired().HasMaxLength(200);
             entity.Property(p => p.Price).HasPrecision(18, 2);
             entity.HasIndex(p => p.Sku).IsUnique();
+            entity.Property(p => p.RowVersion).IsRowVersion();
         });
     }
 }
