@@ -156,6 +156,31 @@ public class ProductsControllerTests
     }
 
     [Fact]
+    public async Task BulkCreate_ValidRequests_AddsAllProducts()
+    {
+        // InMemoryProductStore's AddRangeAsync has no real transaction/rollback
+        // concept and no duplicate-SKU check, so only the all-succeed path is
+        // testable here — the actual atomic-rollback behavior is real only
+        // against EfProductStore and was verified live, not via this test.
+        var controller = CreateController();
+        var requests = new List<CreateProductRequest>
+        {
+            new("SKU-011", "Batch Item 1", 11.00m),
+            new("SKU-012", "Batch Item 2", 12.00m)
+        };
+
+        var result = await controller.BulkCreate(requests);
+
+        var dtos = Assert.IsAssignableFrom<IReadOnlyList<ProductDto>>(((ObjectResult)result.Result!).Value);
+        Assert.Equal(201, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Equal(2, dtos.Count);
+
+        var afterBulk = await controller.GetAll();
+        var page = Assert.IsType<PagedResult<ProductDto>>(((OkObjectResult)afterBulk.Result!).Value);
+        Assert.Equal(5, page.TotalCount);
+    }
+
+    [Fact]
     public async Task Update_ExistingId_ReturnsUpdatedProduct()
     {
         // InMemoryProductStore ignores rowVersion entirely (no real database

@@ -91,6 +91,30 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
     }
 
+    [HttpPost("bulk")]
+    public async Task<ActionResult<IReadOnlyList<ProductDto>>> BulkCreate(List<CreateProductRequest> requests, CancellationToken cancellationToken = default)
+    {
+        var products = requests.Select(r => new Product(r.Sku, r.Name, r.Price)).ToList();
+
+        try
+        {
+            await _productStore.AddRangeAsync(products, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Same unique-index violation as a single Create's Layer 2 — the
+            // difference here is that AddRangeAsync's transaction guarantees
+            // NONE of this batch was saved, not just the one that failed.
+            return Conflict("One or more products in this batch could not be added (e.g. a duplicate SKU) — the entire batch was rolled back, nothing was saved.");
+        }
+
+        // A single Location header doesn't make sense for multiple created
+        // resources, so 201 is returned directly with the full list rather
+        // than via CreatedAtAction (which assumes exactly one resource).
+        var dtos = products.Select(ToDto).ToList();
+        return StatusCode(StatusCodes.Status201Created, dtos);
+    }
+
     [HttpPut("{id}")]
     public async Task<ActionResult<ProductDto>> Update(int id, UpdateProductRequest request, CancellationToken cancellationToken = default)
     {

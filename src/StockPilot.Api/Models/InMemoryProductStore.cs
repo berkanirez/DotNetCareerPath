@@ -52,6 +52,21 @@ public class InMemoryProductStore : IProductStore
         return Task.FromResult(product);
     }
 
+    // No real transaction concept exists here — just a List<T>. This can add
+    // every product in the batch (no duplicate-SKU check, unlike EfProductStore's
+    // real unique index) but can never demonstrate or test an actual rollback;
+    // that behavior is only real and only testable against EfProductStore.
+    public Task<IReadOnlyList<Product>> AddRangeAsync(IReadOnlyList<Product> products, CancellationToken cancellationToken = default)
+    {
+        foreach (var product in products)
+        {
+            product.Id = _nextId++;
+            _products.Add(product);
+        }
+
+        return Task.FromResult(products);
+    }
+
     // No real database underneath, so there is no actual concurrency token to
     // check against — rowVersion is accepted (to satisfy IProductStore) but
     // intentionally ignored. This store can never throw a concurrency
