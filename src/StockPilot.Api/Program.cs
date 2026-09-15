@@ -80,3 +80,11 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Top-level statements compile into a hidden Program class that's internal
+// by default — invisible outside this assembly. WebApplicationFactory<Program>,
+// used by the test project to boot this exact app for real HTTP integration
+// tests, needs to reference that type from OUTSIDE this assembly, which
+// requires it to be public. This empty partial declaration only changes
+// visibility — it adds no behavior and changes nothing about how the app runs.
+public partial class Program { }

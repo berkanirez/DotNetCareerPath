@@ -999,3 +999,78 @@ Copy this template for each new entry:
 **Independent task:** Extend `[Authorize(Roles = "Admin")]` to `BulkCreate` and verify live. Declined by Berkan — stated the pattern was clear enough to visualize without needing to implement it; recorded honestly rather than marked complete.
 
 **Next session:** Phase 2, Week 5, Day 26 — policy-based authorization (likely Week 5's final topic per `docs/ROADMAP.md`).
+
+### 2026-09-15 — Phase 2, Week 5, Day 26 (Week 5 closed)
+
+**Topic:** Policy-based authorization; closing out Week 5 with a security-failure-case review.
+
+**Problem solved:** Day 25's `[Authorize(Roles = "Admin")]` repeated the raw string `"Admin"` directly in a controller. Introducing a second Admin-only endpoint (`BulkCreate`, the independent task Berkan had declined on Day 25) would have meant repeating that string a second time. Replaced both with a single named policy (`CanManageProducts`), defined once in `Program.cs`.
+
+**What I learned:** Confirmed via a genuinely good follow-up question that `RequireRole` is a built-in framework method (`AuthorizationPolicyBuilder`, `Microsoft.AspNetCore.Authorization`), not project code — and, more importantly, that role names are not a registered/closed set anywhere in ASP.NET Core: a role is nothing more than a string value carried in a claim. `RequireRole("Customer")` would compile and run fine even though no token this app ever issues carries that value — it would just silently reject every single user forever, with no error raised anywhere. This is a real, easy-to-hit typo trap (a misspelled role name in `RequireRole(...)` fails silently rather than loudly) worth remembering. All three of today's understanding questions were also answered correctly and precisely, unprompted.
+
+**What I implemented:**
+* `Program.cs`: a single named policy, `CanManageProducts` (`AddAuthorization(options => options.AddPolicy("CanManageProducts", policy => policy.RequireRole("Admin")))`).
+* `ProductsController`: `Delete` and `BulkCreate` both switched to `[Authorize(Policy = "CanManageProducts")]` — `BulkCreate`'s restriction completes, via a policy this time, the independent task declined on Day 25.
+* Live proof, both directions: `employee` → `403` on both endpoints, `admin` → success on both; then, with zero edits to `ProductsController.cs`, `Program.cs`'s single policy definition was temporarily broken (`RequireRole("Admin")` → `RequireRole("SuperAdmin")`) and both endpoints simultaneously rejected `admin` too — concrete proof of the "change once, apply everywhere" benefit. Reverted and re-verified.
+* A Week 5 close-out review: every "security failure case" on `docs/ROADMAP.md`'s Week 5 list confirmed already live-proven across Days 23-26 (401 for no/wrong/expired/reused-refresh credentials, 403 for insufficient role) — no separate day needed for that topic.
+
+**Runtime flow:** Identical to Day 25's role check at the HTTP level — `UseAuthorization()` now evaluates a named policy's requirement (`RequireRole("Admin")`) instead of an inline `Roles = "Admin"` attribute value, but the actual claim comparison is the same. Full trace, including both live demonstrations, in `docs/daily-code-notes/day-26.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 22/22 passing, unchanged (no test behavior depends on `Roles` vs `Policy` syntax).
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live proof as described above; database confirmed clean (7 original products) after demo cleanup.
+
+**Evidence:** A genuine, working demonstration of a policy's real advantage (not just syntax) — a single central change simultaneously affecting two independent endpoints with no controller edits; an honestly-scoped decision not to invent a contrived non-role-based policy requirement just to show off syntax; a full Week 5 close-out review; commit (pending).
+
+**Mistakes or difficulties:** None blocking — all three understanding questions this session were answered correctly and precisely without needing correction, a good sign that Days 23-25's authentication/authorization concepts had genuinely landed by this point.
+
+**Production considerations:** `CanManageProducts` is still just a role check today — the real value of policies (custom, non-role logic via `RequireAssertion`/`IAuthorizationHandler`) is a real extension point for later (e.g. once an `Order` domain exists and "owner or Admin" type rules become necessary), deliberately not manufactured today without a real need.
+
+**Understanding questions and answers:**
+1. Q: Practical difference between `[Authorize(Roles="Admin")]` and `[Authorize(Policy="CanManageProducts")]` given identical behavior today? A: Correct, unprompted — usage convenience across multiple endpoints; a future rule change only needs one central edit instead of hunting down every repeated role string.
+2. Q: Why did the live "break the policy" proof require zero controller changes? A: Correct, unprompted — both endpoints reference the policy by name only; the rule itself lives in exactly one place (`Program.cs`).
+3. Q: Summarize the 401-vs-403 distinction from Day 25. A: Correct, unprompted, concise — 401 means "I don't know your identity," 403 means "I know your identity but you lack permission."
+
+**Independent task:** None assigned — Week 5 closed today; the security-failure-case review substituted for a new implementation task.
+
+**Week 5 is complete.** Days 23-26 covered JWT access tokens (authentication vs. authorization), refresh tokens with rotation (plus a real, live-discovered and permanently-fixed `ClockSkew` bug), role-based authorization, and policy-based authorization, closing with a full review confirming every planned security-failure-case topic was already live-proven along the way.
+
+**Next session:** Phase 2, Week 6, Day 27 — xUnit/mocking/testing topics (Week 6, the final week of Phase 2; junior .NET job applications begin at the end of this week per `docs/ROADMAP.md`).
+
+### 2026-09-15 — Phase 2, Week 6, Day 27
+
+**Topic:** First real integration tests via `WebApplicationFactory`.
+
+**Problem solved:** Every test since Day 14 called a controller method directly, bypassing the entire HTTP middleware pipeline — meaning `[Authorize]`/`[Authorize(Policy=...)]` had never actually been exercised by an automated test, only proven live via curl (an honestly-documented gap repeated on Days 23-26). Added the first tests that go through a real, in-memory-hosted copy of the actual app.
+
+**What I learned:** Correctly explained, unprompted, the core distinction between a unit test (calls the controller method directly, no pipeline) and an integration test (a real `HttpClient` hitting a real `WebApplicationFactory`-hosted app, going through routing/authentication/authorization for real); also correctly explained why `public partial class Program { }` was needed (top-level statements otherwise produce an `internal` `Program` class invisible to the test project). The exact character-count math behind a real bug (see below) needed a follow-up clarification — attempted but incomplete on the first try, then walked through precisely (21-character prefix + a 32-character `Guid:N` = 53, versus `CreateProductRequest.Sku`'s 50-character limit).
+
+**What I implemented:**
+* `Program.cs`: `public partial class Program { }` added (pure visibility fix, no behavior change).
+* `Microsoft.AspNetCore.Mvc.Testing` package added to the test project.
+* `tests/StockPilot.Api.Tests/ProductsAuthorizationIntegrationTests.cs` — 3 new tests using `IClassFixture<WebApplicationFactory<Program>>`: real `401` with no token, real `403` with an employee token, real `204` deleting an admin-created-and-owned throwaway product (unique per-run SKU).
+* A real bug caught live, not staged, while first running these tests: the generated SKU (`"SKU-INTEGRATION-TEST-" + Guid.NewGuid():N`) was 53 characters, exceeding the 50-character limit on `Sku` that's existed since Day 12 — a genuine `400 Bad Request` on the very first run. Fixed with a shorter prefix.
+* Independent task, completed correctly by Berkan himself at his own request for step-by-step (not written-for-him) guidance: `GetAll_NoToken_ReturnsOk`, proving an unrestricted endpoint really does return `200` without any token — passed on the first attempt, correctly following the existing tests' pattern.
+
+**Runtime flow:** A test's `HttpClient.DeleteAsync(...)` now travels through the *actual* `Program.cs` pipeline — routing, `UseAuthentication`, `UseAuthorization`, then the real `Delete` action — exactly like a real curl request, except issued from inside a test and hosted in-memory by `WebApplicationFactory`. Full trace, including the real bug, in `docs/daily-code-notes/day-27.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 26/26 passing (4 new: 3 planned + 1 independent task).
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Database check: total product count still 7 after the full run — the tests' throwaway products were created and cleaned up entirely by the tests themselves, no manual intervention needed.
+
+**Evidence:** A real, previously-impossible-to-automate authorization proof (401/403/204 all through the genuine pipeline); a real bug caught and fixed during test-writing itself, not manufactured; an independent task completed correctly and unassisted by Berkan; commit (pending).
+
+**Mistakes or difficulties:** The SKU-length bug was a genuine first-attempt mistake (not planned), a good real example of why a "just make it unique" throwaway value still has to respect the same validation rules as real production data. Q3's first answer was correct in substance ("the 50-character limit was exceeded") but incomplete — needed the precise arithmetic spelled out before it fully landed.
+
+**Production considerations:** These integration tests run against the real, shared `StockPilotDb` (same `appsettings.Development.json` every other demo uses) — a deliberate, explicitly-flagged simplification. A production-grade test suite needs an isolated, disposable database per test run (Testcontainers is the planned next step, a separate Week 6 topic) rather than relying on unique SKUs to avoid collisions in a shared database.
+
+**Understanding questions and answers:**
+1. Q: Core difference between the old `ProductsControllerTests.cs` tests and today's new ones? A: Correct, unprompted — today's tests go through a real HTTP client against a real running app, so they actually exercise the pipeline (including `[Authorize]`), unlike calling a controller method directly.
+2. Q: What would happen without `public partial class Program { }`? A: Correct, unprompted — `Program` would stay `internal`, and the test project (a separate assembly) could not reference it for `WebApplicationFactory<Program>`.
+3. Q: Exact character-count math behind the 400 Bad Request? A: Attempted but incomplete ("the 50-character limit was exceeded" without the precise numbers); clarified with the full breakdown (21 + 32 = 53 vs. a 50-character limit).
+
+**Independent task:** Add an integration test proving `GetAll` (no `[Authorize]`) returns `200` without a token. Completed correctly and unassisted by Berkan, at his own request for step-by-step guidance rather than Claude writing the code; passed on the first run; re-verified by Claude (26/26 passing).
+
+**Next session:** Phase 2, Week 6, Day 28 — test-database isolation (likely via Testcontainers).

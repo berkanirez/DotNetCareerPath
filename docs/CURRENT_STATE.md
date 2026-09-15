@@ -6,12 +6,12 @@ This file reflects the actual current state of the learning journey. It must alw
 
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
-* **Week:** 5 (Authentication) — in progress
-* **Day:** 25 (complete)
+* **Week:** 6 — in progress (final week of Phase 2)
+* **Day:** 27 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** Role-based authorization (RBAC) added — two demo accounts (`admin`/`Admin`, `employee`/`Employee`), a `Role` claim in the JWT, and `ProductsController.Delete` restricted to `Admin` (`[Authorize(Roles = "Admin")]`). Live-proven: `employee` gets `403 Forbidden` (not `401`) on `Delete`, `admin` succeeds, `employee`'s `GET` remains unaffected. 22/22 tests passing.
+* **Status:** First real integration tests added via `WebApplicationFactory<Program>` — closing the honest gap (noted since Day 23) that no automated test exercised the real HTTP pipeline (`[Authorize]`/`UseAuthentication`/`UseAuthorization`). A real bug was caught live while writing the tests (a generated SKU exceeded `[StringLength(50)]`) and fixed. 26/26 tests passing.
 * **Available study time:** 2 hours/day
-* **Progress:** ~23% (Day 25 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~25% (Day 27 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -211,6 +211,22 @@ This file reflects the actual current state of the learning journey. It must alw
 * Independent task (extending `[Authorize(Roles = "Admin")]` to `BulkCreate`) was declined by Berkan — explicitly stated it was understood well enough to visualize without needing to actually implement it. Recorded honestly rather than silently marked complete.
 * Follow-up, still within the same session: two supplementary Turkish explainer documents were created at Berkan's request after the code explanation didn't fully land — a comprehensive, jargon-minimized, file-by-file walkthrough of the *entire* JWT system end to end (`jwt-genel-akis-basit-anlatim.md`, using a "wristband" analogy throughout, covering `appsettings.json` → `AuthController` → `Program.cs` → `ProductsController`), and a follow-up chat explanation (not yet written to a file) of exactly what `HttpContext.User` contains (a `ClaimsPrincipal` holding a list of `Claim` objects mirroring the JWT's own claims, plus the fact that it is never `null` — an unauthenticated request gets an empty, `IsAuthenticated = false` principal, not a missing one).
 * Day 25 code, tests, and both new doc files committed and pushed by Berkan (`f7d38c8`); this `CURRENT_STATE.md`/`LEARNING_LOG.md` update follows separately.
+* `Program.cs`: a single named authorization policy (`CanManageProducts`, defined via `AddAuthorization(options => options.AddPolicy(...))`, currently just `RequireRole("Admin")`) replaces the raw role string previously repeated in `[Authorize(Roles = "Admin")]`.
+* `ProductsController`: `Delete` and `BulkCreate` both now use `[Authorize(Policy = "CanManageProducts")]` — `BulkCreate`'s restriction is the completion, via a policy this time, of the independent task Berkan declined on Day 25.
+* Live proof (both directions): `employee` gets `403` on both `Delete` and `BulkCreate`; `admin` succeeds on both. Then, with zero changes to `ProductsController.cs`, `Program.cs`'s single policy definition was temporarily broken (`RequireRole("Admin")` → `RequireRole("SuperAdmin")`) and both endpoints simultaneously started rejecting `admin` too (`403`) — concretely proving the "change once, apply everywhere" benefit of naming a policy instead of repeating a role string. Reverted and re-verified back to normal afterward.
+* Clarified via a follow-up question: `RequireRole` is a built-in `AuthorizationPolicyBuilder` method (`Microsoft.AspNetCore.Authorization`), not something written in this project; role names are not a registered/closed set anywhere — a role is nothing more than a string value carried in a claim, so `RequireRole("Customer")` would compile and run perfectly even though no token this app issues ever carries that value, silently rejecting everyone forever rather than raising any error. Flagged as a real, easy-to-hit typo trap (a misspelled role name fails silently, not loudly).
+* `docs/daily-code-notes/day-26.md` created (Turkish).
+* Week 5 close-out: reviewed as a checklist that every "security failure case" on `docs/ROADMAP.md`'s Week 5 topic list was already live-proven across Days 23-26 (no token → 401, wrong credentials → 401, expired token → 401, invalid/reused refresh token → 401, insufficient role → 403) — no separate day needed for that topic.
+* Understanding questions: all 3 answered correctly and precisely, unprompted (usage convenience of a single change point across multiple endpoints; confirmed understanding of why no controller edit was needed for the live "break the policy" proof; a correct, concise restatement of the 401-vs-403 distinction from Day 25).
+* **Week 5 is complete.** Days 23-26 covered: JWT access tokens (auth vs. authz), refresh tokens with rotation (plus a real, live-discovered `ClockSkew` bug fixed permanently), role-based authorization, and policy-based authorization — closing with a full security-failure-case review rather than a separate day.
+* `Program.cs`: `public partial class Program { }` added at the end — a pure visibility fix (top-level statements otherwise generate an `internal` `Program` class) so the test project's `WebApplicationFactory<Program>` can reference it from outside the assembly; changes no runtime behavior.
+* `tests/StockPilot.Api.Tests/StockPilot.Api.Tests.csproj`: `Microsoft.AspNetCore.Mvc.Testing` package added.
+* `tests/StockPilot.Api.Tests/ProductsAuthorizationIntegrationTests.cs` added — the first tests in either codebase that exercise the real HTTP pipeline (via `WebApplicationFactory`/`IClassFixture`) rather than calling a controller method directly: real `401` (no token), real `403` (employee role), real `204` (admin deletes a throwaway product it creates and cleans up itself, using a unique per-run SKU so it never collides with seeded data or other test runs).
+* A real bug caught live while first writing these tests (not staged): the generated unique SKU (`"SKU-INTEGRATION-TEST-" + Guid:N`) was 53 characters, exceeding `CreateProductRequest.Sku`'s `[StringLength(50)]` (in place since Day 12) — the create step genuinely returned `400 Bad Request`. Fixed with a shorter prefix.
+* `docs/daily-code-notes/day-27.md` created (Turkish).
+* Understanding questions: Q1 and Q2 answered correctly and precisely, unprompted (integration tests use a real HTTP client through the real pipeline, unlike unit tests calling the controller directly; without the `public partial class Program {}` marker, the test project could not reference the otherwise-`internal` generated `Program` type). Q3 (the exact character-count math behind the 400) was attempted but incomplete — clarified with a precise breakdown (21-character prefix + 32-character `Guid:N` = 53, vs. the 50-character limit).
+* Independent task (adding a `GetAll_NoToken_ReturnsOk` integration test proving an unrestricted endpoint really does return 200 without a token) completed correctly by Berkan himself, at his own request for step-by-step guidance rather than Claude writing it — passed on the first run, following the existing tests' pattern correctly (right HTTP method, right route, right expected status code). 26/26 tests passing.
+* Deliberately not addressed today: these integration tests run against the real, shared `StockPilotDb` (same `appsettings.Development.json` as every other demo) rather than an isolated test database — test-database isolation (likely via Testcontainers) is a separate, later Week 6 topic.
 
 ## Decisions on record
 
@@ -236,12 +252,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 5, Day 26: policy-based authorization — the next (and per `docs/ROADMAP.md`, likely final) topic on Week 5's list, moving beyond simple role checks to more flexible, named rules (e.g. a policy combining a role with another condition, or a custom requirement/handler).
+2. Begin Phase 2, Week 6, Day 28: test-database isolation — today's integration tests ran against the real, shared `StockPilotDb`; the next logical step is giving them their own isolated database (likely via Testcontainers, per `docs/ROADMAP.md`'s Week 6 list) so they don't depend on or pollute the real dev database.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 5 / Day 26 expected outcome
+## Week 6 / Day 28 expected outcome
 
-* At least one named authorization policy (`AddAuthorization(options => options.AddPolicy(...))`) registered and applied via `[Authorize(Policy = "...")]` to a real endpoint, proven live against both a passing and a failing case.
-* A clear, honest explanation of what a policy can do that a plain `[Authorize(Roles = "...")]` cannot (the actual reason to prefer one over the other), not just syntax for its own sake.
-* Full regression across both solutions; if Week 5's topic list is fully covered, a close-out check (mirroring Week 4's Day 22 pattern) before moving to Week 6 (testing, `WebApplicationFactory`, CI, portfolio polish).
+* Integration tests run against a real, but isolated and disposable, SQL Server instance (e.g. a Testcontainers-managed container) instead of `localhost\SQLEXPRESS`'s real `StockPilotDb`.
+* Each test run starts from a known, clean schema/state rather than depending on today's manual "unique SKU per run" convention.
+* Full regression across both solutions; mocking, GitHub Actions, and portfolio-polish topics remain for later Week 6 days.
 
