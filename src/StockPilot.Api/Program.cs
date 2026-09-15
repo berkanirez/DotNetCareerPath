@@ -41,7 +41,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.Zero
         };
     });
-builder.Services.AddAuthorization();
+// Named once, here, instead of repeating the raw role string "Admin" in
+// every controller that needs this permission — a future rule change
+// (e.g. "Admin OR a senior Employee") only ever needs to change this one
+// place, not every [Authorize] attribute that currently says Roles="Admin".
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("CanManageProducts", policy => policy.RequireRole("Admin"));
+});
 
 var app = builder.Build();
 

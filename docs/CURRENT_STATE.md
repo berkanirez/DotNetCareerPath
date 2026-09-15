@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
 * **Week:** 5 (Authentication) — in progress
-* **Day:** 24 (complete)
+* **Day:** 25 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** Refresh tokens + rotation added (`POST /api/auth/refresh`); a real, unplanned `ClockSkew` bug (JWT bearer's 5-minute default expiry tolerance) was discovered live and permanently fixed (`ClockSkew = TimeSpan.Zero`). `InMemoryRefreshTokenStore`'s expiry was made testable via a constructor parameter; 4 new dedicated tests added (valid/unknown/reused/expired token paths). 18/18 tests passing.
+* **Status:** Role-based authorization (RBAC) added — two demo accounts (`admin`/`Admin`, `employee`/`Employee`), a `Role` claim in the JWT, and `ProductsController.Delete` restricted to `Admin` (`[Authorize(Roles = "Admin")]`). Live-proven: `employee` gets `403 Forbidden` (not `401`) on `Delete`, `admin` succeeds, `employee`'s `GET` remains unaffected. 22/22 tests passing.
 * **Available study time:** 2 hours/day
-* **Progress:** ~22% (Day 24 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~23% (Day 25 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -200,6 +200,17 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-24.md` created (Turkish); a supplementary, extremely detailed line-by-line walkthrough (`day-24-refresh-akisi-detay.md`, Turkish) was also created after the first explanation didn't land, plus a "Bonus" section on adding custom claims (e.g. nickname/phone) — where they'd be added, where the data would come from, how to read them back via `User.FindFirst(...)`, and a security note that JWT claims are signed but not encrypted (readable by anyone holding the token).
 * Understanding questions: all 3 answered by Claude directly, at Berkan's explicit request ("Sen cevapla... bana yaptırma") rather than by Berkan himself — covering why `TryRemove` (not `TryGetValue`) makes rotation automatic, why `ClockSkew` defaults to 5 minutes (clock drift tolerance) rather than zero, and why `IRefreshTokenStore` must be `Singleton` (state needs to survive across separate requests) unlike `IProductStore`'s `Scoped` (a `DbContext`'s thread-safety requirement).
 * Independent task (also completed by Claude directly, at the same explicit request): `InMemoryRefreshTokenStore`'s fixed 7-day `Lifetime` was refactored into an optional constructor parameter (`TimeSpan? lifetime = null`, defaulting to 7 days) purely so an expired-token test could use a negative `TimeSpan` to make a token expire the instant it's issued, with no real waiting. 4 new tests added (`tests/StockPilot.Api.Tests/InMemoryRefreshTokenStoreTests.cs`): valid token, unknown token, reused token (rotation), and expired token. Live-verified afterward that DI still resolves the store correctly with its real 7-day production default (login still works end-to-end). 18/18 tests passing.
+* Day 24 code + docs committed by Berkan (`85e0feb`).
+* `AuthController.DemoUsers` extended from one hardcoded account to two (`admin`→`Admin` role, `employee`→`Employee` role), each with its own hashed password; `GenerateAccessToken` gained a `role` parameter and adds a `ClaimTypes.Role` claim to the JWT (the specific claim type ASP.NET Core's `[Authorize(Roles = "...")]` checks by default — a made-up claim name would never be recognized).
+* `Refresh` looks the role back up from `DemoUsers` by username (`IRefreshTokenStore` only ever stored a username, never a role, since roles didn't exist when it was built on Day 24) — a side benefit noted: this means a refreshed token always carries the user's *current* role, never a stale one baked in at original login time.
+* `ProductsController.Delete`: `[Authorize]` → `[Authorize(Roles = "Admin")]` — the first role-restricted endpoint in either codebase.
+* `tests/StockPilot.Api.Tests/AuthControllerTests.cs` added (4 tests) — a `[Theory]`/`[InlineData]` test decodes the JWT `Login` produces (via `JwtSecurityTokenHandler().ReadJwtToken`, not `ValidateToken`, since it's our own just-issued token) and asserts the correct role claim for both demo accounts; 2 more cover invalid/unknown-username login attempts.
+* Live proof: `employee` login + `DELETE` → `403 Forbidden` (identity known, permission denied) — not `401`; `employee`'s `GET` on the same product still succeeded (no regression, restriction is scoped to `Delete` only); `admin` login + `DELETE` on the same product → `204` (real successful delete).
+* `docs/daily-code-notes/day-25.md` created (Turkish).
+* Understanding questions: Q1 (401 vs 403) was initially misunderstood — Berkan reasonably expected "employee has no permission" to mean 401, since "Unauthorized" sounds like "no permission"; corrected by explaining HTTP's actual (widely confusing) semantics — 401 really means "I don't know who you are," 403 means "I know exactly who you are, but no" — via a building-security-badge analogy. Q2 and Q3 were unknown, both explained by Claude (where `HttpContext.User`'s role information is populated and by what, and why `Refresh` re-reads the role from `DemoUsers` rather than from the refresh token store).
+* Independent task (extending `[Authorize(Roles = "Admin")]` to `BulkCreate`) was declined by Berkan — explicitly stated it was understood well enough to visualize without needing to actually implement it. Recorded honestly rather than silently marked complete.
+* Follow-up, still within the same session: two supplementary Turkish explainer documents were created at Berkan's request after the code explanation didn't fully land — a comprehensive, jargon-minimized, file-by-file walkthrough of the *entire* JWT system end to end (`jwt-genel-akis-basit-anlatim.md`, using a "wristband" analogy throughout, covering `appsettings.json` → `AuthController` → `Program.cs` → `ProductsController`), and a follow-up chat explanation (not yet written to a file) of exactly what `HttpContext.User` contains (a `ClaimsPrincipal` holding a list of `Claim` objects mirroring the JWT's own claims, plus the fact that it is never `null` — an unauthenticated request gets an empty, `IsAuthenticated = false` principal, not a missing one).
+* Day 25 code, tests, and both new doc files committed and pushed by Berkan (`f7d38c8`); this `CURRENT_STATE.md`/`LEARNING_LOG.md` update follows separately.
 
 ## Decisions on record
 
@@ -225,12 +236,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 5, Day 25: role-based authorization (RBAC) — the next topic on Week 5's list, building on Day 23-24's "any authenticated user" model by introducing at least one role (e.g. `Admin` vs a regular user) and role-restricted endpoints.
+2. Begin Phase 2, Week 5, Day 26: policy-based authorization — the next (and per `docs/ROADMAP.md`, likely final) topic on Week 5's list, moving beyond simple role checks to more flexible, named rules (e.g. a policy combining a role with another condition, or a custom requirement/handler).
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 5 / Day 25 expected outcome
+## Week 5 / Day 26 expected outcome
 
-* A `role` claim added to the JWT at login (today's single demo user can be hardcoded to a role, e.g. `Admin`).
-* At least one endpoint restricted by role (e.g. `[Authorize(Roles = "Admin")]`), proven live against both an authorized and an unauthorized role.
-* Full regression across both solutions after the change; policy-based authorization remains a later Week 5 topic, not part of Day 25.
+* At least one named authorization policy (`AddAuthorization(options => options.AddPolicy(...))`) registered and applied via `[Authorize(Policy = "...")]` to a real endpoint, proven live against both a passing and a failing case.
+* A clear, honest explanation of what a policy can do that a plain `[Authorize(Roles = "...")]` cannot (the actual reason to prefer one over the other), not just syntax for its own sake.
+* Full regression across both solutions; if Week 5's topic list is fully covered, a close-out check (mirroring Week 4's Day 22 pattern) before moving to Week 6 (testing, `WebApplicationFactory`, CI, portfolio polish).
 

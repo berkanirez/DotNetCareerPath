@@ -92,6 +92,10 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
     }
 
+    // Bulk-creating products is the same "Admin-only" permission as deleting
+    // one — referenced here by the same policy name (Day 26) rather than
+    // repeating [Authorize(Roles = "Admin")] a second time.
+    [Authorize(Policy = "CanManageProducts")]
     [HttpPost("bulk")]
     public async Task<ActionResult<IReadOnlyList<ProductDto>>> BulkCreate(List<CreateProductRequest> requests, CancellationToken cancellationToken = default)
     {
@@ -140,12 +144,15 @@ public class ProductsController : ControllerBase
         }
     }
 
-    // First role-restricted endpoint: deleting a product now requires not
-    // just any valid JWT (Day 23), but specifically the "Admin" role claim
-    // it carries (Day 25) — an authenticated "Employee" gets 403 Forbidden,
-    // not 401 (their identity is known, they simply lack this permission).
-    // Every other action here is still deliberately open today.
-    [Authorize(Roles = "Admin")]
+    // Deleting a product requires the "CanManageProducts" policy — today
+    // that policy is defined (once, in Program.cs) as "must have the Admin
+    // role," same effective rule as Day 25's [Authorize(Roles = "Admin")],
+    // but named and centrally defined rather than repeated as a raw string
+    // on every endpoint that needs it. An authenticated "Employee" still
+    // gets 403 Forbidden, not 401 — their identity is known, they simply
+    // lack this permission. Every other action here is still deliberately
+    // open today.
+    [Authorize(Policy = "CanManageProducts")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken = default)
     {

@@ -961,3 +961,41 @@ Copy this template for each new entry:
 **Independent task:** Make `InMemoryRefreshTokenStore.TryConsume`'s expired-token path testable and add a test for it. Completed by Claude directly, at Berkan's explicit request, rather than by Berkan: `Lifetime` became a constructor parameter; 4 tests added (valid, unknown, reused/rotation, expired); 18/18 passing, live-verified DI still works correctly.
 
 **Next session:** Phase 2, Week 5, Day 25 — role-based authorization (RBAC).
+
+### 2026-09-15 — Phase 2, Week 5, Day 25
+
+**Topic:** Role-based authorization (RBAC); the difference between `401 Unauthorized` and `403 Forbidden`.
+
+**Problem solved:** Day 23-24's model only answered "is this a valid, authenticated user" — anyone with any valid token could delete a product. Added a second demo role (`Employee`, alongside `admin`'s `Admin`), embedded it as a `Role` claim in the JWT, and restricted `ProductsController.Delete` to the `Admin` role specifically.
+
+**What I learned:** Confirmed a genuinely common, reasonable point of confusion — "Unauthorized" (401) sounds like it should mean "no permission," so expecting an unauthorized employee to get 401 was a sensible guess, not a mistake in reasoning. The actual HTTP semantics are almost the reverse of what the name suggests: 401 means "I don't know who you are" (fixable by authenticating), 403 means "I know exactly who you are, and the answer is still no" (re-authenticating changes nothing). A building-security-badge analogy landed this. Also reinforced, via direct explanation: `HttpContext.User` is populated with claims (including the role) at the exact moment `UseAuthentication()` successfully validates a token — before `UseAuthorization()` ever runs; and `Refresh` has to re-look-up a user's role from `AuthController`'s own demo user list rather than from `IRefreshTokenStore`, because that store's data shape (username + expiry only) was fixed on Day 24, before roles existed at all — a real, honest architectural seam, not an oversight.
+
+**What I implemented:**
+* `AuthController.DemoUsers` extended from one hardcoded account to two (`admin`/`Admin`, `employee`/`Employee`), each with its own hashed password and role.
+* `GenerateAccessToken` gained a `role` parameter; a `ClaimTypes.Role` claim (the specific type ASP.NET Core's role-checking logic looks for) added to every issued JWT.
+* `Refresh` re-reads the current role from `DemoUsers` by username before reissuing an access token.
+* `ProductsController.Delete`: `[Authorize]` → `[Authorize(Roles = "Admin")]` — the first role-restricted endpoint in either codebase.
+* `tests/StockPilot.Api.Tests/AuthControllerTests.cs` (4 tests, first use of `[Theory]`/`[InlineData]` in this codebase) — decodes `Login`'s issued JWT and asserts the correct role claim per demo account, plus invalid/unknown-login cases.
+* Two supplementary Turkish explainer documents, created after the code explanation didn't fully land on its own: `jwt-genel-akis-basit-anlatim.md` (a complete, jargon-minimized, file-by-file trace of the entire JWT system, using a "wristband" analogy throughout) and a chat explanation of exactly what `HttpContext.User` contains (a `ClaimsPrincipal` holding claims mirroring the JWT's own, never `null` — an unauthenticated request gets an empty principal, not a missing one).
+
+**Runtime flow:** `employee` logs in → JWT carries `Role=Employee` → `DELETE /api/products/{id}` → `UseAuthentication()` populates `HttpContext.User` with that role → `UseAuthorization()` checks it against `[Authorize(Roles="Admin")]`, finds a mismatch → `403` (identity known, permission denied — not `401`). Full trace, including the wristband-analogy walkthrough, in `docs/daily-code-notes/day-25.md` and `jwt-genel-akis-basit-anlatim.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 22/22 passing (4 new).
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live proof: `employee` login + `DELETE` → `403`; `employee`'s `GET` on the same product → still `200` (no regression, restriction scoped to `Delete` only, product still existed); `admin` login + `DELETE` on the same product → `204` (real successful delete).
+
+**Evidence:** A real, live-proven RBAC mechanism distinguishing 401 from 403; a genuine, well-reasoned initial misunderstanding corrected with a concrete analogy rather than just a rule restated; an honestly-scoped test suite; two supplementary teaching documents produced on request; commit (`f7d38c8` for code/tests/docs; this `CURRENT_STATE.md`/`LEARNING_LOG.md` update follows separately).
+
+**Mistakes or difficulties:** Q1's initial answer was a reasonable misreading of HTTP's own confusingly-named status code, not a gap in understanding the mechanism — worth remembering that "the name of the thing lies" is sometimes the actual source of confusion, distinct from not understanding the underlying logic. Q2 and Q3 were unknown outright and needed direct explanation.
+
+**Production considerations:** The two-hardcoded-account model remains today's simplification (real systems need a `Users` table with an assignable role column). The 401/403 distinction and `ClaimTypes.Role` usage are both genuinely production-correct, not simplifications.
+
+**Understanding questions and answers:**
+1. Q: Explain 401 vs 403 via today's employee/admin example. A: Initially expected "employee has no permission" to mean 401 — a reasonable guess given the name "Unauthorized," but incorrect; explained via a security-badge analogy: 401 = "I don't know who you are" (a fake/missing badge), 403 = "I know exactly who you are, but this door isn't for you" (a valid but insufficient badge) — re-showing the same badge, or re-logging in, changes nothing for a 403.
+2. Q: What information does `[Authorize(Roles="Admin")]` check on `HttpContext.User`, and when does it get placed there? A: Not known initially; explained — it checks for a claim of type `ClaimTypes.Role` with the required value, and this is populated the moment `UseAuthentication()` successfully validates the incoming JWT, before `UseAuthorization()` runs.
+3. Q: Why does `Refresh` re-read the role from `DemoUsers` instead of from `IRefreshTokenStore`? A: Not known initially; explained — `IRefreshTokenStore`'s data shape (username + expiry) was fixed on Day 24 before roles existed; re-reading from the one place that actually tracks roles was simpler than reshaping the store, and has the side benefit of always reflecting a user's current role rather than a stale one.
+
+**Independent task:** Extend `[Authorize(Roles = "Admin")]` to `BulkCreate` and verify live. Declined by Berkan — stated the pattern was clear enough to visualize without needing to implement it; recorded honestly rather than marked complete.
+
+**Next session:** Phase 2, Week 5, Day 26 — policy-based authorization (likely Week 5's final topic per `docs/ROADMAP.md`).
