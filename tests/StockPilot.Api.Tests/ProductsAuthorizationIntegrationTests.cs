@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 using StockPilot.Api.Models;
 
 namespace StockPilot.Api.Tests;
@@ -12,16 +11,16 @@ namespace StockPilot.Api.Tests;
 // since Day 23 ("we can prove [Authorize] works live via curl, but no
 // automated test exercises the middleware pipeline") closes here.
 //
-// Deliberate scope choice for today: this runs against the real StockPilotDb
-// (same appsettings.Development.json the app always uses) rather than an
-// isolated test database — that's a separate, later Week 6 topic
-// (test-database isolation / Testcontainers). Each test creates its own
-// uniquely-SKU'd throwaway product rather than touching real seeded data.
-public class ProductsAuthorizationIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+// Day 28: these tests now run against a disposable, per-run SQL Server
+// container (StockPilotApiFactory), not the real StockPilotDb — the real
+// dev database is never touched by this class at all anymore. The unique
+// SKU per run is still generated, now mainly to keep repeated/parallel test
+// runs within one container from colliding with each other.
+public class ProductsAuthorizationIntegrationTests : IClassFixture<StockPilotApiFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly StockPilotApiFactory _factory;
 
-    public ProductsAuthorizationIntegrationTests(WebApplicationFactory<Program> factory)
+    public ProductsAuthorizationIntegrationTests(StockPilotApiFactory factory)
     {
         _factory = factory;
     }

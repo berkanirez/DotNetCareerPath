@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
 * **Week:** 6 — in progress (final week of Phase 2)
-* **Day:** 27 (complete)
+* **Day:** 28 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** First real integration tests added via `WebApplicationFactory<Program>` — closing the honest gap (noted since Day 23) that no automated test exercised the real HTTP pipeline (`[Authorize]`/`UseAuthentication`/`UseAuthorization`). A real bug was caught live while writing the tests (a generated SKU exceeded `[StringLength(50)]`) and fixed. 26/26 tests passing.
+* **Status:** Test-database isolation added via Testcontainers — integration tests now run against a real, disposable SQL Server container (`StockPilotApiFactory`), never touching the real dev `StockPilotDb`. Live-proven: the container is created and fully removed (not just stopped) per test run, and the real dev database's row count is provably unchanged before/after. 26/26 tests passing.
 * **Available study time:** 2 hours/day
-* **Progress:** ~25% (Day 27 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~26% (Day 28 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -227,6 +227,12 @@ This file reflects the actual current state of the learning journey. It must alw
 * Understanding questions: Q1 and Q2 answered correctly and precisely, unprompted (integration tests use a real HTTP client through the real pipeline, unlike unit tests calling the controller directly; without the `public partial class Program {}` marker, the test project could not reference the otherwise-`internal` generated `Program` type). Q3 (the exact character-count math behind the 400) was attempted but incomplete — clarified with a precise breakdown (21-character prefix + 32-character `Guid:N` = 53, vs. the 50-character limit).
 * Independent task (adding a `GetAll_NoToken_ReturnsOk` integration test proving an unrestricted endpoint really does return 200 without a token) completed correctly by Berkan himself, at his own request for step-by-step guidance rather than Claude writing it — passed on the first run, following the existing tests' pattern correctly (right HTTP method, right route, right expected status code). 26/26 tests passing.
 * Deliberately not addressed today: these integration tests run against the real, shared `StockPilotDb` (same `appsettings.Development.json` as every other demo) rather than an isolated test database — test-database isolation (likely via Testcontainers) is a separate, later Week 6 topic.
+* `Testcontainers.MsSql` package added to the test project; `tests/StockPilot.Api.Tests/StockPilotApiFactory.cs` added — a custom `WebApplicationFactory<Program>` subclass implementing `IAsyncLifetime`: `InitializeAsync()` starts a real, disposable SQL Server container, applies the app's real EF Core migrations to it, and seeds it via the same `DbSeeder` the real app uses; `ConfigureWebHost` removes the app's real `StockPilotDbContext` registration and re-adds it pointed at the container instead; `DisposeAsync()` (declared with `new`, not `override`, since it must satisfy `IAsyncLifetime`'s `Task`-returning signature while `WebApplicationFactory`'s own `IAsyncDisposable.DisposeAsync()` returns `ValueTask` — two same-named, incompatible signatures) tears the container down and still explicitly invokes the base class's own cleanup via an interface cast.
+* `ProductsAuthorizationIntegrationTests` switched from `IClassFixture<WebApplicationFactory<Program>>` to `IClassFixture<StockPilotApiFactory>` — no change to any test body.
+* Live proof: during a test run, `docker ps` showed a transient SQL Server container (plus Testcontainers' own "Ryuk" cleanup watchdog); after the run, `docker ps -a` showed the container fully removed, not merely stopped; `sqlcmd` against the real `StockPilotDb` confirmed its row count was identical (7) before and after the full test run — it is no longer touched at all.
+* Understanding questions: all 3 ("bilmiyorum") explained by Claude — why `IAsyncLifetime`'s setup/teardown belongs at the fixture level rather than inside each `[Fact]` (an expensive resource like a container should be started once per class, not once per test); why the real `DbContext` registration must be removed before re-adding rather than "overwritten" (`IServiceCollection` has no overwrite operation — re-adding without removing would leave two ambiguous registrations); which two `DisposeAsync()` signatures clashed (`WebApplicationFactory`'s inherited `ValueTask DisposeAsync()` from `IAsyncDisposable` vs. `IAsyncLifetime`'s required `Task DisposeAsync()`).
+* Independent task, done live together: a temporary `throw new Exception("test")` was added inside `StockPilotApiFactory.InitializeAsync()`; all 4 tests in the class failed instantly, each with the identical exception and stack trace pointing at that one line, none reaching their own actual logic — concretely proving `InitializeAsync()` acts as a genuine gatekeeper for the whole test class. Reverted; 26/26 passing again.
+* `docs/daily-code-notes/day-28.md` created (Turkish).
 
 ## Decisions on record
 
@@ -252,12 +258,11 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 6, Day 28: test-database isolation — today's integration tests ran against the real, shared `StockPilotDb`; the next logical step is giving them their own isolated database (likely via Testcontainers, per `docs/ROADMAP.md`'s Week 6 list) so they don't depend on or pollute the real dev database.
+2. Begin Phase 2, Week 6, Day 29: mocking — the next topic on Week 6's list (`docs/ROADMAP.md`: xUnit, mocking, unit testing, integration testing, `WebApplicationFactory`, Testcontainers, test-database isolation, GitHub Actions, API documentation, portfolio polish — the first four items are now done).
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 6 / Day 28 expected outcome
+## Week 6 / Day 29 expected outcome
 
-* Integration tests run against a real, but isolated and disposable, SQL Server instance (e.g. a Testcontainers-managed container) instead of `localhost\SQLEXPRESS`'s real `StockPilotDb`.
-* Each test run starts from a known, clean schema/state rather than depending on today's manual "unique SKU per run" convention.
-* Full regression across both solutions; mocking, GitHub Actions, and portfolio-polish topics remain for later Week 6 days.
+* A real, well-motivated use case for mocking (e.g. a dependency this codebase doesn't yet have a fake/in-memory double for) — `CLAUDE.md` explicitly warns against mocking EF Core just to pass a test, so today's example needs an honest justification, not syntax for its own sake.
+* Full regression across both solutions; GitHub Actions (CI) and portfolio-polish topics remain for later Week 6 days.
 

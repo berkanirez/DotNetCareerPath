@@ -1074,3 +1074,39 @@ Copy this template for each new entry:
 **Independent task:** Add an integration test proving `GetAll` (no `[Authorize]`) returns `200` without a token. Completed correctly and unassisted by Berkan, at his own request for step-by-step guidance rather than Claude writing the code; passed on the first run; re-verified by Claude (26/26 passing).
 
 **Next session:** Phase 2, Week 6, Day 28 — test-database isolation (likely via Testcontainers).
+
+### 2026-09-15 — Phase 2, Week 6, Day 28
+
+**Topic:** Test-database isolation via Testcontainers.
+
+**Problem solved:** Day 27's integration tests ran against the real, shared `StockPilotDb`, relying on unique-SKU generation to avoid collisions — a fragile convention that also meant tests depended on a real dev database being reachable (which won't be true once GitHub Actions CI exists). Gave integration tests their own real, disposable SQL Server, spun up in a Docker container per test run.
+
+**What I learned:** All three understanding questions were unknown outright this session and needed direct explanation: why `IAsyncLifetime`'s setup/teardown belongs at the fixture (class) level rather than inside each `[Fact]` (an expensive resource like a container should start once per class, not once per test — the whole reason `IClassFixture` exists); why `ConfigureWebHost` must remove the app's real `DbContext` registration before re-adding it rather than simply registering again (`IServiceCollection` has no "overwrite" operation — a second registration without removing the first would leave two ambiguous entries); and which two same-named `DisposeAsync()` methods clashed, requiring `new` instead of `override` (`WebApplicationFactory`'s own `IAsyncDisposable.DisposeAsync()` returns `ValueTask`; `IAsyncLifetime` requires one returning `Task` — incompatible signatures despite the identical name). The independent task, done together live, concretely proved `InitializeAsync()`'s gatekeeper role: a temporary exception there failed all 4 tests in the class instantly and identically, none reaching their own logic.
+
+**What I implemented:**
+* `Testcontainers.MsSql` package added to the test project.
+* `tests/StockPilot.Api.Tests/StockPilotApiFactory.cs` — a custom `WebApplicationFactory<Program>` implementing `IAsyncLifetime`: `InitializeAsync()` starts a real SQL Server container, applies the app's actual EF Core migrations to it, and seeds it via the same `DbSeeder` the real app uses; `ConfigureWebHost` swaps the app's real `StockPilotDbContext` registration for one pointed at the container; `DisposeAsync()` (declared `new`, for the reason above) tears the container down and still explicitly triggers the base class's own cleanup via an interface cast.
+* `ProductsAuthorizationIntegrationTests` switched to `IClassFixture<StockPilotApiFactory>` — no change to any test body, only which fixture backs them.
+* Independent task, done live together: a temporary `throw new Exception("test")` inside `InitializeAsync()` failed all 4 tests in the class instantly with an identical error and stack trace, proving none of them could reach their own actual logic when the shared setup fails.
+
+**Runtime flow:** `dotnet test` → xUnit constructs `StockPilotApiFactory` once for the whole test class → calls `InitializeAsync()` (starts the container, migrates, seeds) → each `[Fact]`'s first `CreateClient()` call triggers the actual host build, at which point `ConfigureWebHost` redirects `StockPilotDbContext` to the container → tests run exactly as before against this isolated database → after all tests finish, `DisposeAsync()` tears the container down completely. Full trace, including the independent task's live proof, in `docs/daily-code-notes/day-28.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 26/26 passing (same test count as Day 27 — no new tests, just a new backing database).
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live proof: `docker ps` during a run showed a transient SQL Server container plus Testcontainers' own "Ryuk" cleanup watchdog; `docker ps -a` after the run showed the container fully removed (not merely stopped); `sqlcmd` against the real `StockPilotDb` confirmed its row count (7) was identical before and after the entire test run — genuinely untouched.
+
+**Evidence:** A real, live-proven test-isolation mechanism matching production CI practice; a live-demonstrated fixture-failure-cascades-to-every-test proof; an honest resolution of a genuine C# signature conflict (`new` vs `override`); commit (pending).
+
+**Mistakes or difficulties:** Initially wrote `DisposeAsync()` with `override`, which failed to compile (`CS0508`, return-type mismatch against the inherited `ValueTask`-returning member) — corrected to `new` per the compiler's own suggestion, then had to reason through explicitly re-invoking the hidden base cleanup via an interface cast so it wasn't silently skipped.
+
+**Production considerations:** This is now genuinely production-grade practice, not a simplification — real CI pipelines (including the GitHub Actions setup planned for later this week) rely on exactly this pattern: spin up real, disposable infrastructure per run rather than sharing a persistent database across test executions.
+
+**Understanding questions and answers:**
+1. Q: What do `IAsyncLifetime`'s `InitializeAsync`/`DisposeAsync` do, and why not put that logic inside each `[Fact]`? A: Not known initially; explained — `IClassFixture` exists specifically so an expensive shared resource (a container) starts once for an entire test class rather than once per test, which would make the suite dramatically slower.
+2. Q: Why remove the real `DbContext` registration before re-adding it in `ConfigureWebHost`, rather than just registering again? A: Not known initially; explained — `IServiceCollection` has no "overwrite," only a list of registrations; adding a second one without removing the first leaves two ambiguous entries for the same type.
+3. Q: Which two `DisposeAsync()` methods clashed, requiring `new` instead of `override`? A: Not known initially; explained — `WebApplicationFactory`'s inherited `IAsyncDisposable.DisposeAsync()` (returns `ValueTask`) versus `IAsyncLifetime`'s required `DisposeAsync()` (returns `Task`) — identical name, incompatible signatures.
+
+**Independent task:** Temporarily throw inside `StockPilotApiFactory.InitializeAsync()`, observe the result, then revert. Completed together live: all 4 tests failed identically, pointing at the same line, none reaching their own logic — reverted, 26/26 passing again.
+
+**Next session:** Phase 2, Week 6, Day 29 — mocking.
