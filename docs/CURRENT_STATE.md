@@ -6,12 +6,12 @@ This file reflects the actual current state of the learning journey. It must alw
 
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
-* **Week:** 4 — complete (closed on Day 22)
-* **Day:** 22 (complete)
+* **Week:** 5 (Authentication) — in progress
+* **Day:** 24 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** `POST /api/products/bulk` added with an explicit transaction (atomic "all or nothing" batch create) and `AsNoTracking()` added to read-only queries; the partial-commit bug was triggered live without the transaction, then proven fixed with it; `AsNoTracking()`'s real effect on the change tracker was proven live against the real database. **Week 4 is now closed** — next session begins Week 5 (Authentication). 14/14 tests passing.
+* **Status:** Refresh tokens + rotation added (`POST /api/auth/refresh`); a real, unplanned `ClockSkew` bug (JWT bearer's 5-minute default expiry tolerance) was discovered live and permanently fixed (`ClockSkew = TimeSpan.Zero`). `InMemoryRefreshTokenStore`'s expiry was made testable via a constructor parameter; 4 new dedicated tests added (valid/unknown/reused/expired token paths). 18/18 tests passing.
 * **Available study time:** 2 hours/day
-* **Progress:** ~20% (Day 22 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~22% (Day 24 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -182,6 +182,24 @@ This file reflects the actual current state of the learning journey. It must alw
 * Independent task: predicted an empty-array `POST /api/products/bulk` would throw `DbUpdateException`; live test showed it actually returns `HTTP 201` with an empty `[]` body (the `foreach` loop simply runs zero times — no database write is ever attempted, so nothing can be rejected). Incorrect prediction, corrected via live verification together; noted as an observed (not fixed) edge case — an empty batch might arguably deserve a `400 Bad Request` instead, out of today's scope.
 * Day 22 code and `day-22.md` committed by Berkan (`c740af7`); this `CURRENT_STATE.md`/`LEARNING_LOG.md` update follows separately.
 * **Week 4 is complete.** Days 16-22 covered: EF Core + SQL Server persistence, async conversion, unique index + two-layer 409 defense, optimistic concurrency (`RowVersion`), and transactions + query analysis (`AsNoTracking()`). "Stock-reservation rules" (originally on Week 4's topic list) remains explicitly deferred until an `Order` domain exists — not part of Week 4's closure.
+* `Microsoft.AspNetCore.Authentication.JwtBearer` package added; `Jwt` config section (`Issuer`/`Audience`/`Key`/`ExpiryMinutes`) added to `appsettings.Development.json`, explicitly named/documented as a dev-only simplification (a real signing key belongs in user-secrets/Key Vault, not source control).
+* `Models/LoginRequest.cs`/`LoginResponse.cs` added; `Controllers/AuthController.cs` added — a single hardcoded demo user (`admin`/`Passw0rd!`), password compared via `PasswordHasher<T>` (hashed, not plaintext), `POST /api/auth/login` issues a signed JWT (`Sub`/`Jti` claims, `Issuer`/`Audience`/expiry) on success.
+* `Program.cs`: `AddAuthentication().AddJwtBearer(...)` (validates issuer, audience, signing key, and lifetime) + `AddAuthorization()`; `UseAuthentication()` added to the pipeline immediately before `UseAuthorization()` (order is load-bearing — `UseAuthorization()` only checks an already-populated `HttpContext.User`, it never validates tokens itself).
+* `ProductsController.Delete` gained `[Authorize]` — the first protected endpoint in either codebase. Every other action remains deliberately open today; broader `[Authorize]` coverage and roles/policies are later Week 5 topics.
+* Live proof: `DELETE` with no token → 401; login with a wrong password → 401; login with correct credentials → 200 + a real JWT; `DELETE` with a valid token against a missing id → 404 (not 401 — authentication passed, then normal business logic ran); a throwaway product created then deleted with a valid token → 204 (real successful delete).
+* Honestly noted: `[Authorize]` is enforced by ASP.NET Core's middleware pipeline, which a unit test calling the controller method directly never goes through — `Delete_ExistingId_RemovesProductAndReturnsNoContent` and friends kept passing unchanged (14/14) specifically because they bypass the pipeline entirely; a real "returns 401" test would need a `WebApplicationFactory`-based integration test (Week 6's topic).
+* `docs/daily-code-notes/day-23.md` created (Turkish).
+* Understanding questions: 2 of 3 answered correctly and precisely unprompted (authentication populates the context from the JWT, authorization checks permission against it; `UseAuthentication()` must precede `UseAuthorization()` because otherwise the context needed for the permission check would never be filled) — the "why is JWT stateless" question needed an explanation (the token carries its own signed proof, verified cryptographically against the server's own key, with no database/session lookup needed).
+* Independent task: temporarily added `[Authorize]` to `GetAll` to predict/verify a token-less `GET`'s status code. First reported as "biliyorum, 401 verecek" without having actually run it — held to the workspace's "predict, then verify live" standard (especially given Day 22's empty-array prediction had been wrong despite seeming obvious) and re-tested together live: confirmed genuinely `401`. The temporary attribute was then reverted, and the working tree confirmed to exactly match the already-pushed commit again.
+* Day 23 code, `day-23.md`, and the (pending) Day 22 `CURRENT_STATE.md`/`LEARNING_LOG.md` update were all committed together by Berkan (`89cbf43`); this update (Day 23's actual completion entries) follows separately.
+* `Models/IRefreshTokenStore.cs`/`InMemoryRefreshTokenStore.cs` added (Singleton DI, same reasoning as RoadmapOS Day 3's `InMemorySkillCatalog`) — `Issue(username)` generates an opaque random token; `TryConsume(token, out username)` atomically finds-and-deletes it (`ConcurrentDictionary.TryRemove`), which is what makes rotation automatic rather than a separate invalidation step.
+* `Models/RefreshTokenRequest.cs` added; `LoginResponse` extended with a `RefreshToken` field.
+* `AuthController`: JWT-building logic extracted into a private `GenerateAccessToken` helper (reused by both `Login` and the new `Refresh` action); `POST /api/auth/refresh` added — consumes a refresh token and issues a brand-new access+refresh pair, or `401` if the token is invalid/expired/already used.
+* Live proof: refreshing with token RT1 issued a new pair (RT2); reusing RT1 a second time correctly returned `401` (rotation confirmed); the freshly-issued RT2 worked normally (proving RT1's failure wasn't a general bug).
+* Real, unplanned bug found and fixed live: temporarily shortening the access token's expiry to prove real-time expiry showed the token still being accepted 7 seconds past its 5-second lifetime — traced to ASP.NET Core's JWT bearer default `ClockSkew` of 5 minutes (a deliberate tolerance for clock drift between servers). Fixed permanently with `ClockSkew = TimeSpan.Zero` in `Program.cs`; re-verified live (expired token → 401, freshly-refreshed token → 204 real delete).
+* `docs/daily-code-notes/day-24.md` created (Turkish); a supplementary, extremely detailed line-by-line walkthrough (`day-24-refresh-akisi-detay.md`, Turkish) was also created after the first explanation didn't land, plus a "Bonus" section on adding custom claims (e.g. nickname/phone) — where they'd be added, where the data would come from, how to read them back via `User.FindFirst(...)`, and a security note that JWT claims are signed but not encrypted (readable by anyone holding the token).
+* Understanding questions: all 3 answered by Claude directly, at Berkan's explicit request ("Sen cevapla... bana yaptırma") rather than by Berkan himself — covering why `TryRemove` (not `TryGetValue`) makes rotation automatic, why `ClockSkew` defaults to 5 minutes (clock drift tolerance) rather than zero, and why `IRefreshTokenStore` must be `Singleton` (state needs to survive across separate requests) unlike `IProductStore`'s `Scoped` (a `DbContext`'s thread-safety requirement).
+* Independent task (also completed by Claude directly, at the same explicit request): `InMemoryRefreshTokenStore`'s fixed 7-day `Lifetime` was refactored into an optional constructor parameter (`TimeSpan? lifetime = null`, defaulting to 7 days) purely so an expired-token test could use a negative `TimeSpan` to make a token expire the instant it's issued, with no real waiting. 4 new tests added (`tests/StockPilot.Api.Tests/InMemoryRefreshTokenStoreTests.cs`): valid token, unknown token, reused token (rotation), and expired token. Live-verified afterward that DI still resolves the store correctly with its real 7-day production default (login still works end-to-end). 18/18 tests passing.
 
 ## Decisions on record
 
@@ -207,11 +225,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 5, Day 23: Authentication vs. authorization, JWT access tokens — the first topic on Week 5's list (`docs/ROADMAP.md`: JWT access token, refresh token, refresh-token rotation, role-based authorization, policy-based authorization, security failure cases).
+2. Begin Phase 2, Week 5, Day 25: role-based authorization (RBAC) — the next topic on Week 5's list, building on Day 23-24's "any authenticated user" model by introducing at least one role (e.g. `Admin` vs a regular user) and role-restricted endpoints.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 5 / Day 23 expected outcome
+## Week 5 / Day 25 expected outcome
 
-* First touch of authentication in StockPilot: likely a minimal user/credential concept plus JWT issuance on successful login, and at least one protected endpoint requiring a valid token.
-* Exact scope for a 2-hour slice (how much of login/token-issuance/`[Authorize]` fits together) to be finalized in the day's plan — full JWT refresh-token rotation and role/policy-based authorization are expected to span multiple days, not all of Day 23.
+* A `role` claim added to the JWT at login (today's single demo user can be hardcoded to a role, e.g. `Admin`).
+* At least one endpoint restricted by role (e.g. `[Authorize(Roles = "Admin")]`), proven live against both an authorized and an unauthorized role.
+* Full regression across both solutions after the change; policy-based authorization remains a later Week 5 topic, not part of Day 25.
 

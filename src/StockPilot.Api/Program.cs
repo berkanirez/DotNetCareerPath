@@ -16,6 +16,10 @@ builder.Services.AddProblemDetails();
 builder.Services.AddDbContext<StockPilotDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("StockPilotDb")));
 builder.Services.AddScoped<IProductStore, EfProductStore>();
+// Singleton (not Scoped): a refresh token must survive across separate
+// requests (login now, refresh later) — the same reasoning RoadmapOS's
+// InMemorySkillCatalog used on Day 3, before EF Core needed Scoped instead.
+builder.Services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -29,7 +33,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtSection["Audience"],
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Key"]!)),
-            ValidateLifetime = true
+            ValidateLifetime = true,
+            // Default is 5 minutes — a token can otherwise still be accepted
+            // up to 5 minutes after its own `exp` claim says it expired
+            // (meant to tolerate clock drift between servers). Set to zero
+            // so our short-lived access tokens expire exactly when they say.
+            ClockSkew = TimeSpan.Zero
         };
     });
 builder.Services.AddAuthorization();

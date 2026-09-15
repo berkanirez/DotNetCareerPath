@@ -23,10 +23,12 @@ public class AuthController : ControllerBase
     private static readonly string DemoPasswordHash = PasswordHasher.HashPassword(null!, "Passw0rd!");
 
     private readonly IConfiguration _configuration;
+    private readonly IRefreshTokenStore _refreshTokenStore;
 
-    public AuthController(IConfiguration configuration)
+    public AuthController(IConfiguration configuration, IRefreshTokenStore refreshTokenStore)
     {
         _configuration = configuration;
+        _refreshTokenStore = refreshTokenStore;
     }
 
     [HttpPost("login")]
@@ -41,6 +43,34 @@ public class AuthController : ControllerBase
             return Unauthorized("Invalid username or password.");
         }
 
+        var (accessToken, expiresAtUtc) = GenerateAccessToken(request.Username);
+        var refreshToken = _refreshTokenStore.Issue(request.Username);
+
+        return Ok(new LoginResponse(accessToken, expiresAtUtc, refreshToken));
+    }
+
+    [HttpPost("refresh")]
+    [AllowAnonymous]
+    public ActionResult<LoginResponse> Refresh(RefreshTokenRequest request)
+    {
+        // TryConsume removes the token the moment it's looked up — whether
+        // this call succeeds or the token turns out to be expired, that
+        // exact refresh token can never be presented successfully again.
+        if (!_refreshTokenStore.TryConsume(request.RefreshToken, out var username))
+        {
+            return Unauthorized("Invalid or already-used refresh token.");
+        }
+
+        var (accessToken, expiresAtUtc) = GenerateAccessToken(username);
+        // Rotation: a brand-new refresh token replaces the one just consumed,
+        // rather than letting the same refresh token be reused indefinitely.
+        var newRefreshToken = _refreshTokenStore.Issue(username);
+
+        return Ok(new LoginResponse(accessToken, expiresAtUtc, newRefreshToken));
+    }
+
+    private (string Token, DateTime ExpiresAtUtc) GenerateAccessToken(string username)
+    {
         var jwtSection = _configuration.GetSection("Jwt");
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Key"]!));
         var signingCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
@@ -49,7 +79,7 @@ public class AuthController : ControllerBase
 
         var claims = new[]
         {
-            new Claim(JwtRegisteredClaimNames.Sub, request.Username),
+            new Claim(JwtRegisteredClaimNames.Sub, username),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -60,8 +90,6 @@ public class AuthController : ControllerBase
             expires: expiresAtUtc,
             signingCredentials: signingCredentials);
 
-        var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-
-        return Ok(new LoginResponse(tokenString, expiresAtUtc));
+        return (new JwtSecurityTokenHandler().WriteToken(token), expiresAtUtc);
     }
 }

@@ -882,3 +882,82 @@ Copy this template for each new entry:
 **Week 4 is complete.** Days 16-22 covered EF Core + SQL Server persistence, async conversion, a unique index with a two-layer 409 defense, optimistic concurrency (`RowVersion`), and transactions + query analysis. "Stock-reservation rules" (originally on Week 4's topic list) remains explicitly deferred until an `Order` domain exists.
 
 **Next session:** Phase 2, Week 5, Day 23 — Authentication vs. authorization, JWT access tokens (first topic on Week 5's list).
+
+### 2026-09-14 — Phase 2, Week 5, Day 23
+
+**Topic:** Authentication vs. authorization; first JWT (JSON Web Token) issuance and validation.
+
+**Problem solved:** No endpoint in StockPilot required any identity at all — anyone could delete any product. Added a minimal login flow issuing a signed JWT, and made `ProductsController.Delete` the first endpoint that requires one.
+
+**What I learned:** Correctly explained, unprompted, the authentication/authorization split (authentication reads the JWT and populates the request context; authorization checks whether that context has permission for this specific request) and precisely why `UseAuthentication()` must precede `UseAuthorization()` (without it, the context needed for the permission check would never be filled, so every `[Authorize]`'d request would be treated as unauthenticated regardless of the token). The "why is JWT stateless" point needed direct explanation: the token carries its own cryptographically signed proof of who issued it and when it expires, so the server can verify it purely by checking the signature against its own key — no database or session lookup required, unlike a classic session-ID-based login. Also reinforced, via the independent task, a recurring theme from Day 22: a prediction stated confidently ("I know it'll be 401") is not the same as a verified one — even when the prediction is correct, skipping the actual run is exactly the shortcut this workspace's methodology exists to prevent.
+
+**What I implemented:**
+* `Microsoft.AspNetCore.Authentication.JwtBearer` package added.
+* `Jwt` config section added to `appsettings.Development.json` (`Issuer`, `Audience`, `Key`, `ExpiryMinutes`), explicitly named/documented as a dev-only simplification.
+* `Models/LoginRequest.cs`/`LoginResponse.cs`; `Controllers/AuthController.cs` — a single hardcoded demo user, password checked via `PasswordHasher<T>` (hashed, never compared as plaintext), `POST /api/auth/login` issues a signed JWT on success.
+* `Program.cs`: `AddAuthentication().AddJwtBearer(...)` (validating issuer, audience, signing key, and lifetime) + `AddAuthorization()`; `UseAuthentication()` added immediately before `UseAuthorization()` in the pipeline.
+* `ProductsController.Delete` gained `[Authorize]` — the first protected endpoint in either codebase; every other action stays open today, a deliberate scope choice.
+* Independent task: temporarily added `[Authorize]` to `GetAll` to check what a token-less `GET` returns.
+
+**Runtime flow:** `POST /api/auth/login` → demo credentials checked → signed JWT returned. `DELETE /api/products/{id}` → `UseAuthentication()` reads the `Authorization: Bearer` header, verifies the signature, populates `HttpContext.User` → `UseAuthorization()` checks `[Authorize]`'s requirement against that → 401 if missing/invalid, otherwise the action runs normally. Full trace in `docs/daily-code-notes/day-23.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 14/14 passing, unchanged — `[Authorize]` is enforced by the middleware pipeline, which a unit test calling the controller method directly never goes through.
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live proof: `DELETE` with no token → 401; login with a wrong password → 401; login with correct credentials → 200 + a real JWT; `DELETE` with a valid token against a missing id → 404 (not 401 — authentication passed, then ordinary business logic ran); a throwaway product created then deleted with a valid token → 204 (a real successful delete).
+* Independent task, done live together after an initially-unverified claim: `[Authorize]` was temporarily added to `GetAll`; a token-less `GET` was actually run and returned `401` (matching the prediction, but now genuinely confirmed rather than assumed); the temporary attribute was reverted and the working tree confirmed to exactly match the already-pushed commit again.
+
+**Evidence:** A real, live-proven authentication mechanism (401/200/404/204 all triggered against the running app, not just described); an honestly-scoped test suite (unit tests correctly noted as blind to `[Authorize]`); a live-corrected instance of an unverified claim; commit (`89cbf43`, code + day-23.md + the pending Day 22 doc update bundled together by Berkan; this update follows separately).
+
+**Mistakes or difficulties:** The independent task was initially reported as done ("biliyorum, 401 verecek") without actually being run — caught and corrected by insisting on live verification before accepting it, consistent with Day 22's lesson that even an obvious-seeming prediction can be wrong and is never a substitute for actually running the code.
+
+**Production considerations:** The single hardcoded demo user and the `appsettings.json`-stored signing key are both explicitly dev-only simplifications — production needs a real user store and a securely-stored key (user-secrets/Key Vault/environment variable). Password hashing via `PasswordHasher<T>` is, however, already production-realistic. No refresh tokens, no roles, no policies yet — all later Week 5 topics.
+
+**Understanding questions and answers:**
+1. Q: Explain authentication vs. authorization via today's login → DELETE flow. A: Correct, unprompted — authentication takes the JWT's information and puts it into the request context; authorization then checks whether there's permission for this specific request.
+2. Q: Why is a JWT "stateless" — why doesn't the server need to check a database to know a token is valid? A: Not known initially; explained: the token carries its own signed content, verifiable purely by checking the signature against the server's own key — no stored session or database lookup needed, unlike classic session-ID logins.
+3. Q: Why would every `[Authorize]`'d request return 401 if `UseAuthentication()` didn't come before `UseAuthorization()`? A: Correct, unprompted — because the context wouldn't be filled (the token wouldn't have been processed yet), so there'd be no way to know whether permission exists.
+
+**Independent task:** Temporarily add `[Authorize]` to `GetAll`, predict then verify what a token-less `GET` returns, then revert. Completed together live after an initial unverified claim was caught and corrected: confirmed `401`, attribute reverted, working tree matches the pushed commit exactly.
+
+**Next session:** Phase 2, Week 5, Day 24 — refresh tokens and refresh-token rotation.
+
+### 2026-09-15 — Phase 2, Week 5, Day 24
+
+**Topic:** Refresh tokens and refresh-token rotation.
+
+**Problem solved:** Day 23's access token had no renewal mechanism — once it expired, the only option was logging in again. Added a refresh token issued alongside the access token, exchangeable for a new access+refresh pair via `POST /api/auth/refresh`, with rotation (each refresh token is single-use).
+
+**What I learned:** The code explanation needed two extra passes this session — first a plain syntax-and-purpose walkthrough of every new file/block after "kod kısmı karışık geldi," then a supplementary, maximally-detailed line-by-line document (assuming no prior programming background at all) with a concrete end-to-end trace from access-token expiry through a full refresh cycle, written to its own file rather than only in chat. A real, unplanned bug was also found live: attempting to prove real access-token expiry (temporarily set to 5 seconds) showed the token still accepted 7 seconds later — traced to ASP.NET Core's JWT bearer default `ClockSkew` of 5 minutes (a deliberate tolerance for clock drift between servers, not a bug in the library) and fixed permanently with `ClockSkew = TimeSpan.Zero`. This was a genuine discovery, not a staged demonstration, and a well-known real-world JWT gotcha worth remembering.
+
+**What I implemented:**
+* `Models/IRefreshTokenStore.cs`/`InMemoryRefreshTokenStore.cs` (Singleton DI) — `Issue(username)` generates an opaque random token via `RandomNumberGenerator`; `TryConsume(token, out username)` uses `ConcurrentDictionary.TryRemove` to atomically find-and-delete a token in one step, which is what makes rotation automatic (no separate invalidation call needed).
+* `Models/RefreshTokenRequest.cs`; `LoginResponse` extended with `RefreshToken`.
+* `AuthController`: JWT-building logic extracted into a private `GenerateAccessToken` helper reused by both `Login` and the new `Refresh` action.
+* Real bug found and fixed live: `ClockSkew = TimeSpan.Zero` added to `Program.cs`'s `TokenValidationParameters` after discovering the 5-minute default tolerance was masking real expiry during a live demo.
+* Independent task and all 3 understanding questions completed by Claude directly, at Berkan's explicit request ("Sen cevapla ve yap, bana yaptırma") rather than by Berkan: `InMemoryRefreshTokenStore`'s fixed `Lifetime` refactored into an optional constructor parameter (`TimeSpan? lifetime = null`) so a test can pass a negative `TimeSpan` and make a token expire the instant it's issued, with no real waiting; 4 new tests added covering valid/unknown/reused/expired token paths.
+* A supplementary Turkish walkthrough document (`day-24-refresh-akisi-detay.md`) created after the first explanation didn't land — an extremely detailed, assume-no-background, line-by-line trace of the entire login→expiry→refresh→rotation flow, plus a "Bonus" section on adding custom JWT claims (where to add them, where the data would come from, how to read them back, and the security note that JWT claims are signed but not encrypted).
+
+**Runtime flow:** `POST /api/auth/login` → access token (AT1) + refresh token (RT1) issued. `POST /api/auth/refresh` with RT1 → `TryConsume` deletes RT1 from the store and confirms it wasn't expired → a new access token (AT2) and new refresh token (RT2) are issued. A second attempt to refresh with RT1 finds nothing in the store (already deleted) → 401. Full trace, including the ClockSkew discovery, in `docs/daily-code-notes/day-24.md` and the supplementary `day-24-refresh-akisi-detay.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 18/18 passing (4 new).
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live proof: refresh with RT1 → new pair (RT2); reusing RT1 → 401 (rotation confirmed); RT2 → worked normally (proving RT1's failure wasn't a general fault).
+* Live proof of the ClockSkew bug and its fix: before the fix, a 5-second-lifetime token was still accepted 7 seconds later; after `ClockSkew = TimeSpan.Zero`, the same setup correctly returned 401 once genuinely expired, and a freshly-refreshed token succeeded (204, a real delete).
+* Live DI check after the `Lifetime` refactor: login still works end-to-end with the real 7-day production default (the optional constructor parameter defaults correctly through dependency injection).
+
+**Evidence:** A real, live-discovered-and-fixed framework-default bug (not a staged demo); a working rotation mechanism proven live; an honestly-scoped, now-testable expiry path (4 new dedicated tests); a maximally-detailed supplementary walkthrough document produced after the first explanation didn't land; commit (pending).
+
+**Mistakes or difficulties:** The initial code explanation was too dense for this topic specifically — needed a full second pass assuming zero prior syntax knowledge (tuples, `out` parameters, named arguments, `ConcurrentDictionary`, etc. all explained from scratch) before it landed, more so than most previous days.
+
+**Production considerations:** `InMemoryRefreshTokenStore` is lost on restart and never shared across multiple server instances — same known gap `InMemoryProductStore` had before Day 16, would need a database or Redis in production. `ClockSkew = TimeSpan.Zero` is a genuine, permanent, defensible choice for this project (not merely a demo hack), though many real systems deliberately keep some tolerance for multi-server clock drift.
+
+**Understanding questions and answers:**
+1. Q: How does `TryConsume` using `TryRemove` (not `TryGetValue`) give rotation "for free"? A: Answered by Claude, at Berkan's request — `TryRemove` finds and deletes a dictionary entry as one atomic operation, so reading a token IS invalidating it; a separate `TryGetValue` + later `Remove` would leave a window where a concurrent request could read the same still-present token.
+2. Q: Why does `ClockSkew` default to 5 minutes instead of zero? A: Answered by Claude — different servers' clocks are never perfectly synchronized; zero tolerance would cause intermittent, illegitimate 401s for tokens that are still genuinely valid by the issuing server's clock.
+3. Q: Why is `IRefreshTokenStore` `Singleton` while `IProductStore` is `Scoped`? A: Answered by Claude — a refresh token must survive across two separate requests (issued at login, consumed later at refresh), which a `Scoped` lifetime (one instance per request) could never satisfy; `IProductStore`'s `Scoped` requirement is for a different reason entirely (`DbContext`'s thread-safety), not something `IRefreshTokenStore` shares.
+
+**Independent task:** Make `InMemoryRefreshTokenStore.TryConsume`'s expired-token path testable and add a test for it. Completed by Claude directly, at Berkan's explicit request, rather than by Berkan: `Lifetime` became a constructor parameter; 4 tests added (valid, unknown, reused/rotation, expired); 18/18 passing, live-verified DI still works correctly.
+
+**Next session:** Phase 2, Week 5, Day 25 — role-based authorization (RBAC).
