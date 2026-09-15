@@ -140,11 +140,12 @@ public class ProductsController : ControllerBase
         }
     }
 
-    // First protected endpoint in either codebase — deleting a product now
-    // requires a valid, signed JWT (see AuthController.Login). Every other
-    // action here is still deliberately open today; expanding [Authorize]
-    // coverage and adding roles/policies is Week 5's remaining scope.
-    [Authorize]
+    // First role-restricted endpoint: deleting a product now requires not
+    // just any valid JWT (Day 23), but specifically the "Admin" role claim
+    // it carries (Day 25) — an authenticated "Employee" gets 403 Forbidden,
+    // not 401 (their identity is known, they simply lack this permission).
+    // Every other action here is still deliberately open today.
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken = default)
     {

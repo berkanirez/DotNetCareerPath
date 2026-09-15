@@ -13,14 +13,17 @@ namespace StockPilot.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    // A single hardcoded demo account — today's deliberate simplification.
-    // Production requires a real user store (a Users table, a registration
-    // flow, one hashed password per real user), not a constant baked into
-    // the API. The password itself is still hashed, not compared as plain
-    // text, so at least that part is realistic.
-    private const string DemoUsername = "admin";
+    // Two hardcoded demo accounts (one per role) — still today's deliberate
+    // simplification, extended from Day 23's single account only because a
+    // real role check needs at least two different roles to actually prove
+    // anything. Production requires a real user store (a Users table) where
+    // role is a real, assignable column, not a constant here.
     private static readonly PasswordHasher<object> PasswordHasher = new();
-    private static readonly string DemoPasswordHash = PasswordHasher.HashPassword(null!, "Passw0rd!");
+    private static readonly Dictionary<string, (string PasswordHash, string Role)> DemoUsers = new()
+    {
+        ["admin"] = (PasswordHasher.HashPassword(null!, "Passw0rd!"), "Admin"),
+        ["employee"] = (PasswordHasher.HashPassword(null!, "Employee123!"), "Employee")
+    };
 
     private readonly IConfiguration _configuration;
     private readonly IRefreshTokenStore _refreshTokenStore;
@@ -35,15 +38,15 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public ActionResult<LoginResponse> Login(LoginRequest request)
     {
-        var isValidPassword = request.Username == DemoUsername &&
-            PasswordHasher.VerifyHashedPassword(null!, DemoPasswordHash, request.Password) == PasswordVerificationResult.Success;
+        var isValidLogin = DemoUsers.TryGetValue(request.Username, out var user) &&
+            PasswordHasher.VerifyHashedPassword(null!, user.PasswordHash, request.Password) == PasswordVerificationResult.Success;
 
-        if (!isValidPassword)
+        if (!isValidLogin)
         {
             return Unauthorized("Invalid username or password.");
         }
 
-        var (accessToken, expiresAtUtc) = GenerateAccessToken(request.Username);
+        var (accessToken, expiresAtUtc) = GenerateAccessToken(request.Username, user.Role);
         var refreshToken = _refreshTokenStore.Issue(request.Username);
 
         return Ok(new LoginResponse(accessToken, expiresAtUtc, refreshToken));
@@ -61,7 +64,10 @@ public class AuthController : ControllerBase
             return Unauthorized("Invalid or already-used refresh token.");
         }
 
-        var (accessToken, expiresAtUtc) = GenerateAccessToken(username);
+        // The refresh token store only remembers a username, not a role —
+        // the role has to be looked up again here, the same way Login did.
+        var role = DemoUsers[username].Role;
+        var (accessToken, expiresAtUtc) = GenerateAccessToken(username, role);
         // Rotation: a brand-new refresh token replaces the one just consumed,
         // rather than letting the same refresh token be reused indefinitely.
         var newRefreshToken = _refreshTokenStore.Issue(username);
@@ -69,7 +75,7 @@ public class AuthController : ControllerBase
         return Ok(new LoginResponse(accessToken, expiresAtUtc, newRefreshToken));
     }
 
-    private (string Token, DateTime ExpiresAtUtc) GenerateAccessToken(string username)
+    private (string Token, DateTime ExpiresAtUtc) GenerateAccessToken(string username, string role)
     {
         var jwtSection = _configuration.GetSection("Jwt");
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Key"]!));
@@ -80,7 +86,11 @@ public class AuthController : ControllerBase
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, username),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            // ClaimTypes.Role specifically — not a made-up string like "role" —
+            // because ASP.NET Core's [Authorize(Roles = "...")] checks a
+            // request's identity against exactly this claim type by default.
+            new Claim(ClaimTypes.Role, role)
         };
 
         var token = new JwtSecurityToken(
