@@ -40,6 +40,6 @@ public class ProductsControllerMockingTests
 
         var result = await controller.Create(request);
 
-        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.IsType<OkObjectResult>(result.Result); // TEMPORARY (Day 30 CI red/green demo) — deliberately wrong
     }
 }
