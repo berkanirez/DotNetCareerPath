@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
 * **Week:** 6 — in progress (final week of Phase 2)
-* **Day:** 29 (complete)
+* **Day:** 30 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** Mocking (Moq) introduced — a test for `ProductsController.Create`'s Layer 2 (`catch (DbUpdateException)`) closes a gap honestly flagged since Day 19 (previously provable only live, never by an automated test). Verified Red→Green by temporarily removing the `catch` block and watching the test genuinely fail. 27/27 tests passing.
+* **Status:** GitHub Actions CI added (`.github/workflows/ci.yml`) — builds and tests both solutions on every push/PR, with no extra database setup needed thanks to Day 28's Testcontainers work. Live-proven on real GitHub infrastructure through a full success→failure→success cycle, plus an independent task adding a downloadable test-results artifact. 27/27 tests passing locally.
 * **Available study time:** 2 hours/day
-* **Progress:** ~26% (Day 29 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~27% (Day 30 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -239,6 +239,10 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-29.md` created (Turkish).
 * Understanding questions: all 3 ("bilmiyorum") explained by Claude — the mock-vs-fake distinction (a fake has real, working logic; a mock is an empty shell that only does what's explicitly scripted via `Setup`); why `SkuExistsAsync` was set up even though (as verified live) it wasn't strictly necessary; why `InMemoryProductStore` can never produce this test's scenario (its `AddAsync` has no `throw` statement anywhere in it — a fake can only do what its own code says, and its code contains no path to a `DbUpdateException`).
 * Independent task (mirroring the same mocking pattern for `Update`'s Day 21 `DbUpdateConcurrencyException` catch block) declined by Berkan — recorded honestly rather than marked complete.
+* `.github/workflows/ci.yml` added — triggers on `push`/`pull_request` to `master`; restores/builds/tests both `StockPilot.slnx` and `RoadmapOS.slnx` on `ubuntu-latest`. No SQL Server service container needed at all, a direct payoff of Day 28's Testcontainers work (StockPilot's own integration tests bring their own disposable database).
+* Live proof on real GitHub infrastructure (not local): Run #1 (initial push) → `success`, including the Testcontainers-backed `Test StockPilot` step; Run #2 (a deliberately wrong assertion in `ProductsControllerMockingTests.cs`, pushed on purpose) → genuine `failure`; Run #3 (the fix reverted and pushed) → `success` again — a full Red→Green cycle proven on GitHub's own servers, not just locally.
+* Understanding questions: Q1 answered correctly and precisely, unprompted ("works on my machine" vs. a genuinely independent environment). Q2 conflated Day 29's mocking with Day 28's Testcontainers — corrected: the relevant mechanism for CI is Testcontainers (a real, disposable SQL Server), not mocking (a fake object with no real database at all). Q3 incorrectly framed `pull_request` as "a push from another repo" — corrected: both triggers can originate from the same repo; the distinction is the git event type (a direct push to `master` vs. proposing a change for merge, from a branch or a fork, before it lands).
+* Independent task (adding `actions/upload-artifact@v4` with `if: always()` to upload StockPilot's `.trx` test results) completed together, step by step, after an initial "nasıl eklerim bulamadım" — Berkan correctly wrote both the `--logger trx --results-directory` flag addition and the full `upload-artifact` step himself once shown the syntax, across two separate pushes. Live-verified: a real, downloadable artifact (`stockpilot-test-results`, 6374 bytes) was produced by the resulting CI run.
 
 ## Decisions on record
 
@@ -264,12 +268,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 6, Day 30: GitHub Actions (CI) — the next topic on Week 6's list (`docs/ROADMAP.md`: xUnit, mocking, unit testing, integration testing, `WebApplicationFactory`, Testcontainers, test-database isolation, GitHub Actions, API documentation, portfolio polish — everything through mocking is now done).
+2. Begin Phase 2, Week 6, Day 31: API documentation and portfolio polish — the final two items on Week 6's list (`docs/ROADMAP.md`), and with them, the final topics of Phase 2 before Week 6's close and the start of junior .NET job applications.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 6 / Day 30 expected outcome
+## Week 6 / Day 31 expected outcome
 
-* A GitHub Actions workflow that builds both solutions and runs the full test suite (including the Testcontainers-backed integration tests — GitHub Actions' hosted runners have Docker available, so this should work without changes) on push/PR.
-* Live proof: a real push triggers a real, passing (or deliberately-broken-then-fixed) CI run.
-* Full regression across both solutions; API documentation and portfolio-polish topics remain for the final Week 6 day(s).
+* Real, usable API documentation for StockPilot (likely via the existing `AddOpenApi()`/`MapOpenApi()` setup from Day 11, possibly extended, or a proper `README.md` for the StockPilot solution — StockPilot has never had one, unlike RoadmapOS since Day 10).
+* A portfolio-readiness pass: an honest look at what StockPilot currently demonstrates versus what it's missing, mirroring RoadmapOS Day 10's "Known simplifications" exercise.
+* Likely the close of Phase 2 (Week 6) — a completion check before Phase 3 (FieldOps) or whatever comes next per `docs/ROADMAP.md`.
 

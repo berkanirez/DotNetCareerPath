@@ -63,6 +63,37 @@ Aynı desen `RoadmapOS.slnx` için de tekrarlanıyor (Restore/Build/Test) — o 
 
 ---
 
+## Bağımsız görev — test sonuçlarını artifact olarak yükleme (birlikte yapıldı)
+
+```yaml
+- name: Test StockPilot
+  run: dotnet test StockPilot.slnx --no-build --logger trx --results-directory ./TestResults
+
+- name: Upload StockPilot test results
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: stockpilot-test-results
+    path: ./TestResults
+```
+
+- `--logger trx --results-directory ./TestResults` — `dotnet test`'e, sonuçları ayrıca `.trx` formatında bir dosyaya da yazmasını söylüyor.
+- `if: always()` — önceki adım (testler) başarısız olsa bile bu adımın çalışmasını garanti ediyor; normalde bir adım başarısız olunca sonraki adımlar atlanır.
+- `uses: actions/upload-artifact@v4` — bu dosyaları GitHub'a, çalışmanın sonunda indirilebilir bir "artifact" olarak yüklüyor.
+
+Berkan, syntax'ı adım adım (`--logger`/`--results-directory` satırı, sonra `upload-artifact` bloğu) doğru şekilde yazıp iki ayrı commit'te push etti.
+
+**Canlı kanıt:**
+```
+GET /repos/.../actions/runs/35129881259/artifacts
+total_count: 1
+name: stockpilot-test-results, size_bytes: 6374, expires_at: 2026-12-15
+```
+
+Gerçek, indirilebilir bir artifact üretildi — bağımsız görev tamamen doğrulandı.
+
+---
+
 ## Canlı kanıt
 
 **Run #1 — ilk push:**

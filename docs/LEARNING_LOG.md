@@ -1146,3 +1146,38 @@ Copy this template for each new entry:
 **Independent task:** Apply the same mocking pattern to `Update`'s Day 21 `DbUpdateConcurrencyException` catch block. Declined by Berkan; recorded honestly rather than marked complete.
 
 **Next session:** Phase 2, Week 6, Day 30 — GitHub Actions (CI).
+
+### 2026-09-16 — Phase 2, Week 6, Day 30
+
+**Topic:** GitHub Actions (CI).
+
+**Problem solved:** Until today, "do the tests actually pass" always depended on Claude running `dotnet test` by hand in this session. Added a real CI pipeline so every push/PR to `master` is verified automatically, on infrastructure independent of this machine.
+
+**What I learned:** Q1 was answered correctly and precisely, unprompted — the real value of a CI runner isn't convenience, it's proving the code works on a genuinely independent machine, not just "works on my machine." Q2 conflated two different Day 28/29 concepts (mocking vs. Testcontainers) — corrected: CI's database story is solved by Testcontainers (a real, disposable SQL Server), not mocking (a fake object with no database at all); mocking has nothing to do with why CI didn't need a SQL Server setup step. Q3 mis-framed `pull_request` as coming from a different repository — corrected: both `push` and `pull_request` can originate from the same repo; the real distinction is the git event type (a direct push to `master` vs. a proposed change — from a branch or a fork — awaiting merge). The independent task (adding `actions/upload-artifact@v4`) needed a first, explicit syntax example before landing ("nasıl eklerim bulamadım"), after which Berkan wrote the actual YAML correctly himself, across two separate steps and pushes.
+
+**What I implemented:**
+* `.github/workflows/ci.yml` — triggers on `push`/`pull_request` to `master`; restores/builds/tests both `StockPilot.slnx` and `RoadmapOS.slnx` on `ubuntu-latest`, with zero extra database setup needed (a direct payoff of Day 28's Testcontainers work).
+* Live Red→Green→Red→Green proof, entirely on real GitHub infrastructure: Run #1 (initial push) succeeded; a deliberately wrong assertion in `ProductsControllerMockingTests.cs` was pushed and Run #2 genuinely failed; the fix was reverted and pushed, and Run #3 succeeded again.
+* Independent task, completed together step by step: `dotnet test`'s StockPilot step gained `--logger trx --results-directory ./TestResults`; a new `Upload StockPilot test results` step (`actions/upload-artifact@v4`, `if: always()`) was added — Berkan wrote both pieces himself once shown the syntax. Live-verified via the GitHub API: a real, downloadable artifact (`stockpilot-test-results`, 6374 bytes) was produced.
+
+**Runtime flow:** `git push` to `master` → GitHub triggers the workflow on a fresh Ubuntu VM → checks out the repo → installs .NET 10 → restores/builds/tests `StockPilot.slnx` (its integration tests spinning up their own Testcontainers-managed SQL Server, exactly as they do locally) → uploads the `.trx` results as an artifact regardless of outcome → restores/builds/tests `RoadmapOS.slnx` → reports success or failure back to GitHub's UI. Full trace, including all three live CI runs and their exact conclusions, in `docs/daily-code-notes/day-30.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot, local) → 0 errors/warnings, 27/27 passing, unaffected by the CI addition.
+* `dotnet test` (RoadmapOS, local) → 8/8, unaffected.
+* Live, on GitHub's actual servers (checked via the GitHub Actions REST API, not just the web UI): Run #1 `success` (including the `Test StockPilot` step with its Testcontainers-backed integration tests); Run #2 `failure` (the deliberate break); Run #3 `success` (the fix); a real artifact confirmed present and downloadable on the final run.
+
+**Evidence:** A working, live-proven CI pipeline verified against real GitHub infrastructure (not merely described); a genuine Red→Green→Red→Green cycle at the CI level; an independent task completed correctly by Berkan after one clarifying example; commit (pending, several commits already pushed across the session).
+
+**Mistakes or difficulties:** None on the application side. A monitoring script Claude wrote to poll the GitHub API had its own bug (comparing a 7-character SHA prefix against an 8-character one, so the loop's exit condition never matched) and had to be stopped manually once the needed information was already obtained — a minor, self-contained tooling slip, not a StockPilot issue.
+
+**Production considerations:** This CI setup is fully production-grade, not a simplification — the exact same pattern (hosted runner, real disposable test infrastructure, artifact retention) is what real teams use. `docs/ROADMAP.md`'s Week 6 list is now complete through "GitHub Actions"; only API documentation and portfolio polish remain.
+
+**Understanding questions and answers:**
+1. Q: Why does it matter that the CI runner isn't "your own computer"? A: Correct, unprompted — testing on a genuinely independent machine validates that the code works elsewhere, not just in one specific, possibly-quirky local environment.
+2. Q: What would have been harder about CI without Day 28's Testcontainers work? A: Partially correct, terminology conflated (said "mock" instead of "Testcontainers") — corrected: without Testcontainers, the tests would depend on a real, reachable SQL Server (`localhost\SQLEXPRESS`), which doesn't exist on GitHub's runners; a separate SQL Server service-container setup step would have been needed in the workflow.
+3. Q: Difference between `on: push` and `on: pull_request`? A: Incorrect initially (framed as "from a different repo") — corrected: both can come from the same repo; the real distinction is the git event itself (a direct push to `master` vs. a proposed merge from a branch or fork, checked before it lands).
+
+**Independent task:** Add `actions/upload-artifact@v4` (with `if: always()`) to upload StockPilot's `.trx` test results on every CI run. Completed together after an initial "nasıl eklerim bulamadım" — Berkan then wrote both the `dotnet test` flag addition and the full artifact-upload step correctly himself; verified live via a real, downloadable artifact on GitHub.
+
+**Next session:** Phase 2, Week 6, Day 31 — API documentation and portfolio polish (Week 6's final topics).
