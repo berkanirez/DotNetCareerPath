@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # StockPilot's integration tests (Day 27-28) spin up their own
+      # Testcontainers-managed SQL Server — GitHub's ubuntu-latest runners
+      # already have Docker available, so no extra database setup is needed
+      # here at all.
+      - name: Restore StockPilot
+        run: dotnet restore StockPilot.slnx
+
+      - name: Build StockPilot
+        run: dotnet build StockPilot.slnx --no-restore
+
+      - name: Test StockPilot
+        run: dotnet test StockPilot.slnx --no-build
+
+      - name: Restore RoadmapOS
+        run: dotnet restore RoadmapOS.slnx
+
+      - name: Build RoadmapOS
+        run: dotnet build RoadmapOS.slnx --no-restore
+
+      - name: Test RoadmapOS
+        run: dotnet test RoadmapOS.slnx --no-build
