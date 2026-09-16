@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
 * **Week:** 6 — in progress (final week of Phase 2)
-* **Day:** 28 (complete)
+* **Day:** 29 (complete)
 * **Active project:** StockPilot Inventory and Order API
-* **Status:** Test-database isolation added via Testcontainers — integration tests now run against a real, disposable SQL Server container (`StockPilotApiFactory`), never touching the real dev `StockPilotDb`. Live-proven: the container is created and fully removed (not just stopped) per test run, and the real dev database's row count is provably unchanged before/after. 26/26 tests passing.
+* **Status:** Mocking (Moq) introduced — a test for `ProductsController.Create`'s Layer 2 (`catch (DbUpdateException)`) closes a gap honestly flagged since Day 19 (previously provable only live, never by an automated test). Verified Red→Green by temporarily removing the `catch` block and watching the test genuinely fail. 27/27 tests passing.
 * **Available study time:** 2 hours/day
-* **Progress:** ~26% (Day 28 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~26% (Day 29 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -233,6 +233,12 @@ This file reflects the actual current state of the learning journey. It must alw
 * Understanding questions: all 3 ("bilmiyorum") explained by Claude — why `IAsyncLifetime`'s setup/teardown belongs at the fixture level rather than inside each `[Fact]` (an expensive resource like a container should be started once per class, not once per test); why the real `DbContext` registration must be removed before re-adding rather than "overwritten" (`IServiceCollection` has no overwrite operation — re-adding without removing would leave two ambiguous registrations); which two `DisposeAsync()` signatures clashed (`WebApplicationFactory`'s inherited `ValueTask DisposeAsync()` from `IAsyncDisposable` vs. `IAsyncLifetime`'s required `Task DisposeAsync()`).
 * Independent task, done live together: a temporary `throw new Exception("test")` was added inside `StockPilotApiFactory.InitializeAsync()`; all 4 tests in the class failed instantly, each with the identical exception and stack trace pointing at that one line, none reaching their own actual logic — concretely proving `InitializeAsync()` acts as a genuine gatekeeper for the whole test class. Reverted; 26/26 passing again.
 * `docs/daily-code-notes/day-28.md` created (Turkish).
+* `Moq` package added to the test project; `tests/StockPilot.Api.Tests/ProductsControllerMockingTests.cs` added — `Create_StoreThrowsDbUpdateException_ReturnsConflict` mocks `IProductStore` (not EF Core itself, per `CLAUDE.md`'s rule) so `AddAsync` throws a `DbUpdateException` on demand, proving `Create`'s Layer 2 `catch` block for the first time via an automated test rather than only live curl.
+* Live Red→Green proof: the `catch (DbUpdateException)` block was temporarily removed from `ProductsController.Create`; the test genuinely failed (the mocked exception propagated out of the test itself); the block was restored and the test passed again.
+* A real, live-verified nuance discovered together: temporarily removing the test's `SkuExistsAsync` setup still left the test passing, because Moq's loose-mock default for an unconfigured method returning `Task<bool>` is a completed Task wrapping `false` — coincidentally already what the test needed. The explicit `.Setup(...)` was kept anyway (not strictly load-bearing here, but avoids silently depending on a library default).
+* `docs/daily-code-notes/day-29.md` created (Turkish).
+* Understanding questions: all 3 ("bilmiyorum") explained by Claude — the mock-vs-fake distinction (a fake has real, working logic; a mock is an empty shell that only does what's explicitly scripted via `Setup`); why `SkuExistsAsync` was set up even though (as verified live) it wasn't strictly necessary; why `InMemoryProductStore` can never produce this test's scenario (its `AddAsync` has no `throw` statement anywhere in it — a fake can only do what its own code says, and its code contains no path to a `DbUpdateException`).
+* Independent task (mirroring the same mocking pattern for `Update`'s Day 21 `DbUpdateConcurrencyException` catch block) declined by Berkan — recorded honestly rather than marked complete.
 
 ## Decisions on record
 
@@ -258,11 +264,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 6, Day 29: mocking — the next topic on Week 6's list (`docs/ROADMAP.md`: xUnit, mocking, unit testing, integration testing, `WebApplicationFactory`, Testcontainers, test-database isolation, GitHub Actions, API documentation, portfolio polish — the first four items are now done).
+2. Begin Phase 2, Week 6, Day 30: GitHub Actions (CI) — the next topic on Week 6's list (`docs/ROADMAP.md`: xUnit, mocking, unit testing, integration testing, `WebApplicationFactory`, Testcontainers, test-database isolation, GitHub Actions, API documentation, portfolio polish — everything through mocking is now done).
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 6 / Day 29 expected outcome
+## Week 6 / Day 30 expected outcome
 
-* A real, well-motivated use case for mocking (e.g. a dependency this codebase doesn't yet have a fake/in-memory double for) — `CLAUDE.md` explicitly warns against mocking EF Core just to pass a test, so today's example needs an honest justification, not syntax for its own sake.
-* Full regression across both solutions; GitHub Actions (CI) and portfolio-polish topics remain for later Week 6 days.
+* A GitHub Actions workflow that builds both solutions and runs the full test suite (including the Testcontainers-backed integration tests — GitHub Actions' hosted runners have Docker available, so this should work without changes) on push/PR.
+* Live proof: a real push triggers a real, passing (or deliberately-broken-then-fixed) CI run.
+* Full regression across both solutions; API documentation and portfolio-polish topics remain for the final Week 6 day(s).
 

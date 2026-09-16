@@ -1110,3 +1110,39 @@ Copy this template for each new entry:
 **Independent task:** Temporarily throw inside `StockPilotApiFactory.InitializeAsync()`, observe the result, then revert. Completed together live: all 4 tests failed identically, pointing at the same line, none reaching their own logic — reverted, 26/26 passing again.
 
 **Next session:** Phase 2, Week 6, Day 29 — mocking.
+
+### 2026-09-16 — Phase 2, Week 6, Day 29
+
+**Topic:** Mocking with Moq.
+
+**Problem solved:** `ProductsController.Create`'s Layer 2 (`catch (DbUpdateException)`, a rare-race safety net) had been provable only live via curl since Day 19 — `InMemoryProductStore` structurally cannot throw that exception, so no automated test could ever exercise that code path. A mock, unlike a fake, can be told to throw on demand, closing the gap.
+
+**What I learned:** All three understanding questions were unknown initially and needed direct explanation, but one of them led to a genuinely useful live discovery rather than a purely verbal answer: while explaining why `SkuExistsAsync` needed a `.Setup(...)` (to pass Layer 1 so execution reaches Layer 2), the setup was temporarily removed to check — and the test *still passed*. Investigated live rather than asserted from memory: Moq's loose-mock default for an unconfigured method returning `Task<bool>` is a completed `Task` wrapping `false`, which happened to already match what the test needed. The explicit setup was kept anyway (not strictly load-bearing here, but avoids silently depending on a library default a reader wouldn't know about). Also clarified precisely why `InMemoryProductStore` can never produce this scenario: its `AddAsync` implementation contains no `throw` statement anywhere — a fake can only do what its own code says, and nothing in its code can ever produce a `DbUpdateException`.
+
+**What I implemented:**
+* `Moq` package added to the test project.
+* `tests/StockPilot.Api.Tests/ProductsControllerMockingTests.cs` — `Create_StoreThrowsDbUpdateException_ReturnsConflict`, mocking `IProductStore` (not EF Core itself, per `CLAUDE.md`'s explicit rule) so `AddAsync` throws a `DbUpdateException` on demand.
+* Live Red→Green proof: `ProductsController.Create`'s `catch (DbUpdateException)` block was temporarily removed; the test genuinely failed (the mocked exception propagated straight out of the test); the block was restored and the test passed again.
+
+**Runtime flow:** The mock's `SkuExistsAsync` returns `false` (Layer 1 passes) → the mock's `AddAsync` throws a `DbUpdateException` instead of doing anything → `ProductsController.Create`'s real, unmocked code catches it exactly as it would a genuine unique-index violation → returns `409 Conflict` → the test asserts this. Full trace, including the live Moq-default discovery, in `docs/daily-code-notes/day-29.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 27/27 passing (1 new).
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live Red→Green: test failed genuinely without the `catch` block (exact mocked exception surfaced in the failure output), passed again once restored.
+* Live check of Moq's default behavior: removing the `SkuExistsAsync` setup did not break the test, confirming Moq's loose-mock default for `Task<bool>` is `false`, not `null`/an exception.
+
+**Evidence:** A previously-impossible-to-automate test now exists and is proven meaningful via Red→Green; an honest, live-verified correction of an assumption about what was "required" in the test; commit (pending).
+
+**Mistakes or difficulties:** None blocking — the "is this Setup actually necessary" question could easily have gone unexamined and been asserted as fact; checking it live instead surfaced a real, useful nuance about Moq's defaults worth remembering.
+
+**Production considerations:** This mocking pattern (simulate a database failure mode via the store abstraction, not EF Core) is a genuinely reusable shape for the same honestly-flagged gaps on `Update` (Day 21's `DbUpdateConcurrencyException`) and `AddRangeAsync` (Day 22's transaction rollback) — noted but not implemented today, one example was enough to teach the technique.
+
+**Understanding questions and answers:**
+1. Q: Difference between a mock and a fake (`InMemoryProductStore`)? A: Not known initially; explained — a fake has real, working logic (a genuine, if simplified, implementation); a mock is an empty shell that does nothing except what's explicitly scripted via `Setup`, for exactly the calls scripted.
+2. Q: Why set up `SkuExistsAsync` too, not just `AddAsync`? A: Not known initially; investigated live rather than just explained — turned out not to be strictly necessary (Moq's default for unconfigured `Task<bool>` methods is `false`), kept anyway for explicitness rather than relying on a library default.
+3. Q: Why can this test never be written using `InMemoryProductStore`? A: Not known initially; explained — its `AddAsync` has no `throw` statement anywhere in its code, and `DbUpdateException` is fundamentally tied to a real database engine's own constraint enforcement, which a plain in-memory list has no equivalent of.
+
+**Independent task:** Apply the same mocking pattern to `Update`'s Day 21 `DbUpdateConcurrencyException` catch block. Declined by Berkan; recorded honestly rather than marked complete.
+
+**Next session:** Phase 2, Week 6, Day 30 — GitHub Actions (CI).
