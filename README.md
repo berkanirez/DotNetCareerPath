@@ -24,11 +24,11 @@ A long-term, project-based learning workspace to transfer Berkan's existing prof
 
 ## Current status
 
-* **Phase:** Phase 1 — RoadmapOS (V1 released)
-* **Project:** StockPilot Inventory and Order API (Phase 2 starting)
-* **Week:** 3
-* **Day:** 11
-* **Progress:** ~9%
+* **Phase:** Phase 1 — RoadmapOS (V1 released); Phase 2 — StockPilot Inventory and Order API (Weeks 3-6 complete)
+* **Project:** StockPilot Inventory and Order API
+* **Week:** 6 (final week of Phase 2)
+* **Day:** 31
+* **Progress:** ~27%
 
 See [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) for full detail.
 
@@ -71,6 +71,56 @@ dotnet test
 * `Evidence` records are tracked and displayed but not yet enforced by any business rule.
 * No delete flow for skills.
 * An advanced UI was deliberately not used.
+
+## StockPilot Inventory and Order API (Phase 2 project)
+
+StockPilot is a controller-based ASP.NET Core Web API for product inventory, with JWT authentication (access + refresh tokens, rotation), role-based and policy-based authorization, EF Core + SQL Server persistence, optimistic concurrency, transactions, and a full test suite (unit, mocked, and real HTTP integration tests running against a Testcontainers-managed, disposable SQL Server).
+
+### Prerequisites
+
+* .NET 10 SDK
+* SQL Server (Express, Developer, or any local instance) — a connection string is configured in `src/StockPilot.Api/appsettings.Development.json` for a local `localhost\SQLEXPRESS` instance; adjust it if your instance name differs.
+* Docker — required only to run the integration test suite (`tests/StockPilot.Api.Tests`), which spins up its own disposable SQL Server container via Testcontainers. Not needed to run the API itself.
+
+### Running it locally
+
+```
+cd src/StockPilot.Api
+dotnet restore
+dotnet ef database update
+dotnet run
+```
+
+The app seeds three starter products automatically on first run (in `Development` only — see `src/StockPilot.Api/Data/DbSeeder.cs`). Then visit:
+
+* `/scalar/v1` — interactive API documentation (try requests directly from the browser)
+* `/openapi/v1.json` — the raw OpenAPI schema Scalar renders
+* `/api/products` — list products (search/sortBy/page/pageSize query parameters, no authentication required)
+
+Two demo accounts exist for `POST /api/auth/login` (see `Controllers/AuthController.cs` — there is no real user store yet, see "Known simplifications" below):
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `Passw0rd!` | `Admin` |
+| `employee` | `Employee123!` | `Employee` |
+
+Deleting a product (`DELETE /api/products/{id}`) and bulk-creating products (`POST /api/products/bulk`) both require a valid access token from the `Admin` account; every other endpoint is open to anyone.
+
+### Running the tests
+
+```
+dotnet test
+```
+
+(Run from the repository root, or `cd tests/StockPilot.Api.Tests` — either picks up all tests via the solution.) This includes real HTTP integration tests (`ProductsAuthorizationIntegrationTests.cs`) that spin up their own disposable SQL Server container — **Docker must be running** for these to pass; every other test (unit tests, mocked tests) runs with no external dependency at all.
+
+### Known simplifications
+
+* Two hardcoded demo accounts (`admin`/`employee`) — no real `Users` table, no registration flow, no password reset.
+* The JWT signing key lives in `appsettings.Development.json`, committed to source control — explicitly named and documented as dev-only; a real deployment needs it in user-secrets/Key Vault/an environment variable instead.
+* `InMemoryRefreshTokenStore` (currently the app's real, registered implementation) is lost on every app restart and never shared across multiple server instances — production needs a shared store (a database table or Redis).
+* Only a `Product` domain exists — the "Order API" half of StockPilot's name (orders, warehouses, inventory movements, stock reservations) has not been built yet; policy-based authorization (`CanManageProducts`) is scoped only to what exists today.
+* No rate limiting, no refresh-token-family revocation on detected reuse, no HTTPS certificate pinning — reasonable gaps for a learning project, not claimed as production-hardened.
 
 ## Documentation
 

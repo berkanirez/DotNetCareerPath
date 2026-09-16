@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Scalar.AspNetCore;
 using StockPilot.Api.Data;
 using StockPilot.Api.Models;
 
@@ -64,6 +65,10 @@ if (app.Environment.IsDevelopment())
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    // Reads the same /openapi/v1.json schema MapOpenApi() already produces
+    // (Day 11) and renders it as an interactive, clickable API reference at
+    // /scalar/v1 — no changes needed to any endpoint's own code.
+    app.MapScalarApiReference();
 }
 
 app.UseExceptionHandler();
