@@ -29,7 +29,14 @@ jobs:
         run: dotnet build StockPilot.slnx --no-restore
 
       - name: Test StockPilot
-        run: dotnet test StockPilot.slnx --no-build
+        run: dotnet test StockPilot.slnx --no-build --logger trx --results-directory ./TestResults
+
+      - name: Upload StockPilot test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockpilot-test-results
+          path: ./TestResults
 
       - name: Restore RoadmapOS
         run: dotnet restore RoadmapOS.slnx

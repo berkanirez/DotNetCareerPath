@@ -65,4 +65,43 @@ Aynı desen `RoadmapOS.slnx` için de tekrarlanıyor (Restore/Build/Test) — o 
 
 ## Canlı kanıt
 
-Bu dosya, `git push` yapılmadan hiçbir şey ifade etmiyor — canlı kanıt, Berkan'ın push'undan sonra GitHub Actions sekmesinde gerçekleşecek. Sonraki bölüme bakınız.
+**Run #1 — ilk push:**
+```
+GET /repos/.../actions/runs/35128112643
+status: completed, conclusion: success
+
+Adim adim (jobs/steps):
+  Restore StockPilot -> success
+  Build StockPilot   -> success
+  Test StockPilot    -> success   ← Testcontainers'li entegrasyon testleri DAHIL,
+                                     hicbir ek SQL Server kurulum adimi olmadan
+  Restore RoadmapOS  -> success
+  Build RoadmapOS    -> success
+  Test RoadmapOS     -> success
+```
+
+**Run #2 — CI'ı bilerek kırmızıya döndürme:**
+
+`ProductsControllerMockingTests.cs`'teki assertion geçici olarak bozuldu:
+```csharp
+Assert.IsType<OkObjectResult>(result.Result); // yanlış, olması gereken ConflictObjectResult
+```
+Yerel olarak da, GitHub Actions'ta da **gerçekten** başarısız oldu:
+```
+GET /repos/.../actions/runs/35128432423
+status: completed, conclusion: FAILURE
+```
+
+**Run #3 — düzeltme geri push edildi:**
+```
+GET /repos/.../actions/runs (en son)
+sha: 075b8ab7
+status: completed, conclusion: success
+```
+
+**Sonuç:** Üç aşamalı tam bir Red→Green döngüsü, bu sefer **kendi bilgisayarımızda değil, gerçekten GitHub'ın sunucusunda** kanıtlandı: yeşil → bilerek kırmızı → tekrar yeşil. Bundan sonra `master`'a her push'ta bu otomatik olarak, kimse elle bir şey yapmadan çalışacak.
+
+```
+dotnet test (StockPilot, yerel) → 27/27 (degisiklik yok)
+dotnet test (RoadmapOS, yerel)  → 8/8 (etkilenmedi)
+```
