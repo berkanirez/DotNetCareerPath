@@ -1181,3 +1181,38 @@ Copy this template for each new entry:
 **Independent task:** Add `actions/upload-artifact@v4` (with `if: always()`) to upload StockPilot's `.trx` test results on every CI run. Completed together after an initial "nasıl eklerim bulamadım" — Berkan then wrote both the `dotnet test` flag addition and the full artifact-upload step correctly himself; verified live via a real, downloadable artifact on GitHub.
 
 **Next session:** Phase 2, Week 6, Day 31 — API documentation and portfolio polish (Week 6's final topics).
+
+### 2026-09-16 — Phase 2, Week 6, Day 31 (Week 6 and Phase 2 closed)
+
+**Topic:** API documentation (Scalar) and portfolio polish; closing out Phase 2.
+
+**Problem solved:** StockPilot had no interactive API documentation (only Day 11's raw `/openapi/v1.json` schema) and no `README.md` section at all, unlike RoadmapOS since Day 10. `README.md`'s "Current status" had also been stale since Day 11 (still said "Phase 1, Day 11, ~9%"). Closed all three gaps and closed out Phase 2 with an honest inventory, since `docs/ROADMAP.md` defines no formal completion gate specific to Phase 2.
+
+**What I learned/reinforced:** A follow-up explanation was needed after "bugün ne yapıldığını anlamadım" — a much plainer, jargon-free restatement (an "API try-it button," a stale "cover page" getting updated, and an honest "here's what we haven't built yet" list being a maturity signal, not a weakness) landed where the first, more technical summary hadn't. Berkan then ran the app himself, opened `/scalar/v1` in a real browser, tried the login endpoint interactively, and asked to confirm that the two-line `if (app.Environment.IsDevelopment()) { MapOpenApi(); MapScalarApiReference(); }` block was specifically what enabled it — confirmed and explained line by line, tied directly to what he'd just seen in the browser.
+
+**What I implemented:**
+* `Scalar.AspNetCore` package added; `Program.cs` gained `app.MapScalarApiReference()` (Development-only) reading the existing OpenAPI schema — no endpoint code changed.
+* `README.md`: "Current status" updated to reflect reality (Phase 2 closing, Day 31, ~28%); a full "StockPilot Inventory and Order API" section added — prerequisites, run instructions, a demo-accounts table (`admin`/`Passw0rd!` → `Admin`, `employee`/`Employee123!` → `Employee`), test instructions (including the Docker requirement for integration tests), and an honest "Known simplifications" list.
+* `docs/daily-code-notes/day-31.md` — includes a Phase 2 close-out inventory of what Weeks 3-6 actually covered, and an explicit note that StockPilot's "Order API" half (warehouses, orders, stock reservations) was never built.
+
+**Runtime flow:** `/scalar/v1` reads the same `/openapi/v1.json` schema `[ApiController]`'s reflection-based generation has produced since Day 11, rendering it as a clickable, testable page — confirmed live by listing all 5 routes/8 methods in the schema and by Berkan personally exercising the login and product-listing endpoints from the browser. Full trace in `docs/daily-code-notes/day-31.md`.
+
+**Verification:**
+* `dotnet build`/`dotnet test` (StockPilot) → 0 errors/warnings, 27/27 passing, unaffected.
+* `dotnet test` (RoadmapOS) → 8/8, unaffected.
+* Live: `/openapi/v1.json` correctly listed all endpoints; `/scalar/v1` returned a real HTML page; Berkan independently ran the app, opened the page in his own browser, and tried the login flow himself.
+* Live CI check after pushing: the GitHub Actions run for this day's commit (`ef17503`) completed with `success`.
+
+**Evidence:** A working, personally-exercised interactive API documentation page; an updated, accurate project README; an honest, non-inflated Phase 2 close-out; a green CI run on real GitHub infrastructure; commit (`ef17503`, pushed).
+
+**Mistakes or difficulties:** The first end-of-session summary for this day was too abstract/code-focused and didn't land ("bugün ne yapıldığını anlamadım") — a second, concrete, jargon-free pass (a "try-it button," a "cover page," a maturity-signaling honesty list) was needed, consistent with this recurring pattern across the course (Day 8, Day 21, Day 24).
+
+**Production considerations:** Both changes (Scalar, README) are genuinely permanent, portfolio-relevant work, not throwaway demo scaffolding. The `IsDevelopment()` guard around both `MapOpenApi()`/`MapScalarApiReference()` is itself a real production consideration — a live deployment would typically keep this documentation surface off or access-controlled, not open to the public internet by default.
+
+**Understanding questions and answers:** Not answered — Berkan asked to move to the next session instead of completing this round. Recorded honestly.
+
+**Independent task:** Add a personal "Known simplifications" observation to `README.md`. Not completed — Berkan asked to move to the next session instead. Recorded honestly rather than marked complete.
+
+**Phase 2 is complete.** Weeks 3-6 covered controller-based REST API fundamentals, EF Core persistence with concurrency/transactions, JWT authentication and authorization (role- and policy-based), and testing/CI/documentation — all built on a `Product`-only domain; StockPilot's originally-described "Order API" half (warehouses, orders, stock reservations, order cancellation) was never built, since Phase 2's real purpose here was teaching the surrounding mechanics, not completing that specific domain. Per `docs/ROADMAP.md`, junior .NET job applications begin now.
+
+**Next session:** Phase 3, Week 7, Day 32 — FieldOps SaaS Modular Monolith: project setup, modular-monolith boundaries, application services, domain rules, dependency direction, SOLID, clean code, architecture decision records.

@@ -6,12 +6,12 @@ This file reflects the actual current state of the learning journey. It must alw
 
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
-* **Week:** 6 — in progress (final week of Phase 2)
-* **Day:** 30 (complete)
-* **Active project:** StockPilot Inventory and Order API
-* **Status:** GitHub Actions CI added (`.github/workflows/ci.yml`) — builds and tests both solutions on every push/PR, with no extra database setup needed thanks to Day 28's Testcontainers work. Live-proven on real GitHub infrastructure through a full success→failure→success cycle, plus an independent task adding a downloadable test-results artifact. 27/27 tests passing locally.
+* **Week:** 6 — complete (closed on Day 31); **Phase 2 — complete**
+* **Day:** 31 (complete)
+* **Active project:** StockPilot Inventory and Order API (Phase 2 closed) → Phase 3 (FieldOps SaaS Modular Monolith) begins next session
+* **Status:** Interactive API documentation added (Scalar, at `/scalar/v1`, reusing Day 11's existing OpenAPI schema — no endpoint code changed); `README.md` gained a full StockPilot section (prerequisites, run instructions, demo accounts, test instructions, an honest "Known simplifications" list) and an updated "Current status" (previously stale since Day 11). Phase 2 closed with an honest inventory of what Weeks 3-6 actually covered, since `docs/ROADMAP.md` defines no formal completion gate for Phase 2 specifically. 27/27 tests passing (unchanged).
 * **Available study time:** 2 hours/day
-* **Progress:** ~27% (Day 30 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~28% (Day 31 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -243,6 +243,12 @@ This file reflects the actual current state of the learning journey. It must alw
 * Live proof on real GitHub infrastructure (not local): Run #1 (initial push) → `success`, including the Testcontainers-backed `Test StockPilot` step; Run #2 (a deliberately wrong assertion in `ProductsControllerMockingTests.cs`, pushed on purpose) → genuine `failure`; Run #3 (the fix reverted and pushed) → `success` again — a full Red→Green cycle proven on GitHub's own servers, not just locally.
 * Understanding questions: Q1 answered correctly and precisely, unprompted ("works on my machine" vs. a genuinely independent environment). Q2 conflated Day 29's mocking with Day 28's Testcontainers — corrected: the relevant mechanism for CI is Testcontainers (a real, disposable SQL Server), not mocking (a fake object with no real database at all). Q3 incorrectly framed `pull_request` as "a push from another repo" — corrected: both triggers can originate from the same repo; the distinction is the git event type (a direct push to `master` vs. proposing a change for merge, from a branch or a fork, before it lands).
 * Independent task (adding `actions/upload-artifact@v4` with `if: always()` to upload StockPilot's `.trx` test results) completed together, step by step, after an initial "nasıl eklerim bulamadım" — Berkan correctly wrote both the `--logger trx --results-directory` flag addition and the full `upload-artifact` step himself once shown the syntax, across two separate pushes. Live-verified: a real, downloadable artifact (`stockpilot-test-results`, 6374 bytes) was produced by the resulting CI run.
+* `Scalar.AspNetCore` package added; `Program.cs` gained `app.MapScalarApiReference()` (Development-only, alongside Day 11's existing `MapOpenApi()`) — renders the already-generated `/openapi/v1.json` schema as an interactive, clickable API reference at `/scalar/v1`, with no changes to any endpoint's own code.
+* Live proof: `/openapi/v1.json` correctly listed all 5 routes/8 HTTP methods (`Auth/login`, `Auth/refresh`, `Products` GET/POST, `Products/bulk`, `Products/{id}` GET/PUT/DELETE); `/scalar/v1` returned a real HTML page (200, `text/html`). Berkan then ran the app himself, opened `/scalar/v1` in a browser, and confirmed the code (`if (app.Environment.IsDevelopment()) { MapOpenApi(); MapScalarApiReference(); }`) was indeed what enabled it.
+* `README.md`: "Current status" updated (previously stale since Day 11 — still said "Phase 1, Day 11, ~9%"); a full "StockPilot Inventory and Order API" section added (prerequisites, run instructions, a demo-accounts table, test instructions including the Docker requirement for integration tests, and an honest "Known simplifications" list covering the two hardcoded demo accounts, the dev-only JWT key, `InMemoryRefreshTokenStore`'s non-persistence, and the absent `Order` domain).
+* `docs/daily-code-notes/day-31.md` created (Turkish) — includes an honest Phase 2 close-out inventory (what Weeks 3-6 actually covered) since `docs/ROADMAP.md` defines no formal completion gate specific to Phase 2, and an explicit note that StockPilot's "Order API" half (warehouses, orders, stock reservations) was never built — Phase 2 served to teach authentication/testing/CI mechanics on top of a `Product`-only domain, not to complete StockPilot's originally-described full domain.
+* Understanding questions (how OpenAPI/Scalar relate; what README's "front door" role means; why closing Phase 2 without a formal gate is reasonable) and the independent task (adding a personal "Known simplifications" entry) were not answered/completed — Berkan asked to move to the next session instead. Recorded honestly rather than omitted.
+* **Phase 2 is complete.** Weeks 3-6 covered: controller-based REST API fundamentals (Week 3), EF Core persistence with concurrency/transactions (Week 4), JWT authentication and authorization — role- and policy-based (Week 5), and testing/CI/documentation (Week 6). Per `docs/ROADMAP.md`, junior .NET job applications begin now; the next roadmap phase is Phase 3 — FieldOps SaaS Modular Monolith (Weeks 7-12).
 
 ## Decisions on record
 
@@ -268,12 +274,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 2, Week 6, Day 31: API documentation and portfolio polish — the final two items on Week 6's list (`docs/ROADMAP.md`), and with them, the final topics of Phase 2 before Week 6's close and the start of junior .NET job applications.
+2. Begin Phase 3, Week 7, Day 32: FieldOps SaaS Modular Monolith setup — modular-monolith boundaries, application services, domain rules, dependency direction, SOLID, clean code, architecture decision records (`docs/ROADMAP.md`'s Week 7 list). This is a new project (FieldOps), not a StockPilot continuation.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 6 / Day 31 expected outcome
+## Week 7 / Day 32 expected outcome
 
-* Real, usable API documentation for StockPilot (likely via the existing `AddOpenApi()`/`MapOpenApi()` setup from Day 11, possibly extended, or a proper `README.md` for the StockPilot solution — StockPilot has never had one, unlike RoadmapOS since Day 10).
-* A portfolio-readiness pass: an honest look at what StockPilot currently demonstrates versus what it's missing, mirroring RoadmapOS Day 10's "Known simplifications" exercise.
-* Likely the close of Phase 2 (Week 6) — a completion check before Phase 3 (FieldOps) or whatever comes next per `docs/ROADMAP.md`.
+* FieldOps project scaffolding — likely a new solution, and a first pass at defining module boundaries (Identity, Organizations, Employees, Customers, Work Orders, Scheduling, Attachments, Notifications, Reporting, Audit Logs per `docs/ROADMAP.md`'s Phase 3 module list) without building all of them at once.
+* An early architecture decision record (ADR) — Phase 3's topic list explicitly includes ADRs for the first time in this workspace.
+* Exact scope for a 2-hour slice to be finalized in the day's plan — likely just enough to establish the modular-monolith shape (folder/project structure, dependency direction rules) before any real feature work begins.
 
