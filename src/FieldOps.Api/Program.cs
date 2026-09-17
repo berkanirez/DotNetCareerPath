@@ -1,3 +1,4 @@
+using FieldOps.Modules.Employees;
 using FieldOps.Modules.Organizations;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,10 +9,10 @@ builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-// The host installs the module through its own extension method — it never
-// names InMemoryOrganizationDirectory (that class is `internal` to the
-// module and genuinely unreachable from here, not just hidden by convention).
+// The host installs each module through its own extension method — it never
+// names either module's internal concrete implementation class directly.
 builder.Services.AddOrganizationsModule();
+builder.Services.AddEmployeesModule();
 
 var app = builder.Build();
 

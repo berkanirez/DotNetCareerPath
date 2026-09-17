@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FieldOps.Modules.Organizations\FieldOps.Modules.Organizations.csproj" />
+    <ProjectReference Include="..\FieldOps.Modules.Employees\FieldOps.Modules.Employees.csproj" />
   </ItemGroup>
 
 </Project>

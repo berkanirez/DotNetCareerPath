@@ -5,13 +5,13 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Status snapshot
 
 * **Setup phase:** Complete
-* **Roadmap phase:** Phase 2 — StockPilot Inventory and Order API
-* **Week:** 6 — complete (closed on Day 31); **Phase 2 — complete**
-* **Day:** 31 (complete)
-* **Active project:** StockPilot Inventory and Order API (Phase 2 closed) → Phase 3 (FieldOps SaaS Modular Monolith) begins next session
-* **Status:** Interactive API documentation added (Scalar, at `/scalar/v1`, reusing Day 11's existing OpenAPI schema — no endpoint code changed); `README.md` gained a full StockPilot section (prerequisites, run instructions, demo accounts, test instructions, an honest "Known simplifications" list) and an updated "Current status" (previously stale since Day 11). Phase 2 closed with an honest inventory of what Weeks 3-6 actually covered, since `docs/ROADMAP.md` defines no formal completion gate for Phase 2 specifically. 27/27 tests passing (unchanged).
+* **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
+* **Week:** 7 — in progress
+* **Day:** 32 (complete)
+* **Active project:** FieldOps SaaS Modular Monolith
+* **Status:** FieldOps project started — a new `FieldOps.slnx` with a host (`FieldOps.Api`) and a first module (`FieldOps.Modules.Organizations`), the one-way dependency rule enforced by the compiler (not just convention) after a real `CS0050`/`CS0122` back-and-forth, and the first ADR recorded. 200/404 verified live for `GET /api/organizations` and `GET /api/organizations/{id}` (the latter added correctly and independently by Berkan).
 * **Available study time:** 2 hours/day
-* **Progress:** ~28% (Day 31 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~29% (Day 32 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -249,6 +249,16 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-31.md` created (Turkish) — includes an honest Phase 2 close-out inventory (what Weeks 3-6 actually covered) since `docs/ROADMAP.md` defines no formal completion gate specific to Phase 2, and an explicit note that StockPilot's "Order API" half (warehouses, orders, stock reservations) was never built — Phase 2 served to teach authentication/testing/CI mechanics on top of a `Product`-only domain, not to complete StockPilot's originally-described full domain.
 * Understanding questions (how OpenAPI/Scalar relate; what README's "front door" role means; why closing Phase 2 without a formal gate is reasonable) and the independent task (adding a personal "Known simplifications" entry) were not answered/completed — Berkan asked to move to the next session instead. Recorded honestly rather than omitted.
 * **Phase 2 is complete.** Weeks 3-6 covered: controller-based REST API fundamentals (Week 3), EF Core persistence with concurrency/transactions (Week 4), JWT authentication and authorization — role- and policy-based (Week 5), and testing/CI/documentation (Week 6). Per `docs/ROADMAP.md`, junior .NET job applications begin now; the next roadmap phase is Phase 3 — FieldOps SaaS Modular Monolith (Weeks 7-12).
+* **Phase 3 begins.** `FieldOps.slnx` created with two projects: `FieldOps.Modules.Organizations` (a class library — the first of ten planned modules) and `FieldOps.Api` (the ASP.NET Core Web API host). The domain interpretation behind FieldOps (a multi-tenant field-service-management SaaS — Organizations as tenants, Employees doing field work, Work Orders as jobs, etc.) was inferred from `docs/ROADMAP.md`'s module/topic names, confirmed with Berkan before planning Day 32, since the roadmap itself never states it in plain language.
+* `Organization` (domain entity) added, `internal` to `FieldOps.Modules.Organizations`; `IOrganizationDirectory` (the module's only public interface) and `InMemoryOrganizationDirectory` (its `internal` in-memory implementation) added, mirroring RoadmapOS Day 3/StockPilot Day 14's same first-step pattern.
+* `FieldOps.Api`'s `.csproj` references the module; the module's `.csproj` carries zero `<ProjectReference>` entries — the one-way dependency rule is a real, build-enforced constraint, not just a documented intention.
+* A real gap was found and fixed live, prompted by a sharp follow-up question comparing this to Berkan's prior Node.js/Express/Prisma/GraphQL architecture (service layer + resolver, no interface/DI layer): `Organization` and `InMemoryOrganizationDirectory` were initially left `public`, meaning `FieldOps.Api` could bypass `IOrganizationDirectory` and reach them directly — the boundary was only a comment, not enforced. Marking `Organization` `internal` produced a real `CS0050` (a public interface method can't return an internal type), which motivated adding `OrganizationSummary` (a new public record — the module's own DTO, distinct from its internal domain entity, mirroring StockPilot's `IProductStore`/`ProductDto` boundary discipline) as `IOrganizationDirectory`'s actual return type. `InMemoryOrganizationDirectory` was then also marked `internal`; since `Program.cs` could no longer name it for DI registration, `OrganizationsModule.cs` (a new public static class with an `AddOrganizationsModule()` extension method) was added as the module's own "installation" entry point, called from `FieldOps.Api`'s `Program.cs` without ever naming the concrete class.
+* Live proof of the now-enforced boundary: temporarily adding `new InMemoryOrganizationDirectory()` to `Program.cs` produced a genuine `CS0122` ("inaccessible due to its protection level"); reverted afterward, build clean again.
+* `docs/adr/0001-modular-monolith-one-way-dependencies.md` — the first ADR in this workspace, documenting the one-way-dependency and enforced-internal-visibility decisions, including the real compiler errors that shaped the final design.
+* `docs/daily-code-notes/day-32.md` created (Turkish), including the full "convention → enforced boundary" story.
+* Understanding questions: Q1 (modular monolith vs. microservices) was substantively correct but conflated "different repos" with the real distinguishing factor — corrected: the real difference is one running process communicating via in-process calls (modular monolith) vs. separate deployable processes communicating over a network (microservices); repository organization (mono-repo vs. multi-repo) is an orthogonal decision many real microservice systems don't even split. Q2 (why `Organization` couldn't be returned once made `internal`) answered correctly. Q3 (purpose of an ADR) was unknown, explained directly (a permanent record of *why* a decision was made, since code alone only shows *what* was done).
+* Independent task (adding `GetById(int id)` to `IOrganizationDirectory`/`InMemoryOrganizationDirectory` and a `GET /api/organizations/{id}` action returning 404 when missing, mirroring StockPilot Day 12's `GetById` pattern) completed correctly and independently by Berkan — live-verified (200 for an existing id, 404 for a missing one).
+* Follow-up question answered: what `OrganizationSummary`/`OrganizationsModule` are and why they exist (the module's own public DTO, distinct from its HTTP-facing `OrganizationDto`; and the module's own DI-registration entry point, needed once its concrete implementation class became `internal`).
 
 ## Decisions on record
 
@@ -274,12 +284,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 3, Week 7, Day 32: FieldOps SaaS Modular Monolith setup — modular-monolith boundaries, application services, domain rules, dependency direction, SOLID, clean code, architecture decision records (`docs/ROADMAP.md`'s Week 7 list). This is a new project (FieldOps), not a StockPilot continuation.
+2. Begin Phase 3, Week 7, Day 33: a second module (likely `Employees`, since Work Orders will eventually need both an Organization and an assigned Employee) or application-service/domain-rule concepts from Week 7's remaining topic list (SOLID, clean code) — exact scope to be finalized in the day's plan. `FieldOps.slnx` is not yet in CI (`.github/workflows/ci.yml` only builds/tests `StockPilot.slnx`/`RoadmapOS.slnx`) — worth deciding whether to add it soon.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 7 / Day 32 expected outcome
+## Week 7 / Day 33 expected outcome
 
-* FieldOps project scaffolding — likely a new solution, and a first pass at defining module boundaries (Identity, Organizations, Employees, Customers, Work Orders, Scheduling, Attachments, Notifications, Reporting, Audit Logs per `docs/ROADMAP.md`'s Phase 3 module list) without building all of them at once.
-* An early architecture decision record (ADR) — Phase 3's topic list explicitly includes ADRs for the first time in this workspace.
-* Exact scope for a 2-hour slice to be finalized in the day's plan — likely just enough to establish the modular-monolith shape (folder/project structure, dependency direction rules) before any real feature work begins.
+* A second module demonstrating the same enforced-boundary pattern (`internal` domain + implementation, a narrow public interface/DTOs, its own `AddXModule()` registration), proving Day 32's pattern generalizes rather than being a one-off.
+* If a genuine cross-module scenario arises (e.g., an Employee belonging to an Organization), a first real decision about how modules reference each other — deliberately deferred on Day 32 rather than designed speculatively.
+* Full regression across all three solutions (RoadmapOS, StockPilot, FieldOps).
 

@@ -1216,3 +1216,41 @@ Copy this template for each new entry:
 **Phase 2 is complete.** Weeks 3-6 covered controller-based REST API fundamentals, EF Core persistence with concurrency/transactions, JWT authentication and authorization (role- and policy-based), and testing/CI/documentation — all built on a `Product`-only domain; StockPilot's originally-described "Order API" half (warehouses, orders, stock reservations, order cancellation) was never built, since Phase 2's real purpose here was teaching the surrounding mechanics, not completing that specific domain. Per `docs/ROADMAP.md`, junior .NET job applications begin now.
 
 **Next session:** Phase 3, Week 7, Day 32 — FieldOps SaaS Modular Monolith: project setup, modular-monolith boundaries, application services, domain rules, dependency direction, SOLID, clean code, architecture decision records.
+
+### 2026-09-17 — Phase 3, Week 7, Day 32
+
+**Topic:** FieldOps project setup — modular-monolith boundaries, one-way dependency direction, the first ADR.
+
+**Problem solved:** FieldOps's domain spans ten planned modules; started the project by proving out the boundary mechanism with one module (`Organizations`) rather than scaffolding all ten empty. `docs/ROADMAP.md` never states FieldOps's business purpose in plain language (only module names and weekly topics) — before planning the day, this was interpreted together with Berkan as a multi-tenant field-service-management SaaS (Organizations as tenants, Employees doing field work, Work Orders as jobs, Scheduling assigning them, etc.) and confirmed before proceeding.
+
+**What I learned:** A sharp comparison question against Berkan's prior Node.js/Express/Prisma/GraphQL architecture (domain/model → service layer → resolver, with the resolver directly importing a concrete service module) surfaced a genuine gap in the day's own first-pass code: `Organization` and `InMemoryOrganizationDirectory` had been left `public`, meaning the "module boundary" described in the ADR was only a comment, not something the compiler actually enforced. Fixing this live produced two real, unplanned compiler errors in sequence — `CS0050` (a public interface method can't return an `internal` type) when `Organization` was marked `internal`, which motivated introducing `OrganizationSummary` as the module's own public DTO; and, after also marking `InMemoryOrganizationDirectory` `internal`, a need for the module to expose its own DI-registration entry point (`OrganizationsModule.AddOrganizationsModule()`) since `Program.cs` could no longer name the concrete class. A final live check (`new InMemoryOrganizationDirectory()` from `FieldOps.Api`) confirmed a real `CS0122`, proving the boundary now holds. This directly answered the "what's the actual advantage over what I did before in Node" question with a concrete, lived example rather than an abstract claim.
+
+**What I implemented:**
+* `FieldOps.slnx`, `FieldOps.Modules.Organizations` (class library), `FieldOps.Api` (ASP.NET Core Web API host) — the host references the module; the module's `.csproj` carries zero `<ProjectReference>` entries.
+* `Organization` (domain, `internal`), `IOrganizationDirectory` (the module's only public interface), `OrganizationSummary` (the module's public DTO, added after the `CS0050`), `InMemoryOrganizationDirectory` (`internal` implementation), `OrganizationsModule.AddOrganizationsModule()` (the module's public DI-registration entry point).
+* `FieldOps.Api`: `OrganizationDto`, `OrganizationsController` with `GetAll`.
+* `docs/adr/0001-modular-monolith-one-way-dependencies.md` — the first ADR in this workspace, including the real compiler errors that shaped the final design.
+* Independent task, completed correctly and unassisted by Berkan: `GetById(int id)` added to `IOrganizationDirectory`/`InMemoryOrganizationDirectory` (mirroring `FirstOrDefault` + null-check, same shape as StockPilot's `GetByIdAsync`) and a `GET /api/organizations/{id}` action returning `404` when missing — mirroring StockPilot Day 12's `GetById` pattern exactly.
+
+**Runtime flow:** `GET /api/organizations` → `OrganizationsController` calls `IOrganizationDirectory.GetAll()` (resolved by DI to `InMemoryOrganizationDirectory`, a class the controller's own code never names) → the module maps its internal `Organization` entities to `OrganizationSummary` before returning → the controller maps that to its own `OrganizationDto` for the HTTP response. Full trace, including both compiler-error discoveries, in `docs/daily-code-notes/day-32.md`.
+
+**Verification:**
+* `dotnet build` (FieldOps, StockPilot, RoadmapOS) → 0 errors/warnings across all three.
+* Live: `GET /api/organizations` → 200, both seeded organizations; `.csproj` inspection confirmed the one-way reference; a real `CS0050` was triggered and resolved; a real `CS0122` was triggered live (attempting `new InMemoryOrganizationDirectory()` from `FieldOps.Api`) and reverted.
+* Independent task live-verified: `GET /api/organizations/1` → 200; `GET /api/organizations/999` → 404.
+* CI: `FieldOps.slnx` is not yet part of `.github/workflows/ci.yml` (which only covers `StockPilot.slnx`/`RoadmapOS.slnx`) — noted as an open item for a near-future day, not silently assumed covered.
+
+**Evidence:** A real, live-discovered-and-fixed architecture gap (not staged); two genuine compiler errors that shaped the final design, both explained and resolved; an ADR documenting the actual reasoning, including those errors; an independent task completed correctly and unassisted; commit (`371a0be`, pushed).
+
+**Mistakes or difficulties:** The first pass at the module boundary was incomplete (`public` where `internal` was intended) — caught only because Berkan asked a genuinely probing comparison question rather than accepting the initial explanation at face value. Good reminder that a "the boundary is enforced" claim needs the same live-proof standard as any other claim in this workspace.
+
+**Production considerations:** The one-way dependency rule and enforced `internal` visibility are both genuinely production-grade decisions — real modular monoliths use exactly this pattern. Not yet decided (deliberately, per the ADR): how modules will call *each other* once more than one exists — to be resolved when a real cross-module scenario arises, not speculatively.
+
+**Understanding questions and answers:**
+1. Q: Difference between modular monolith and microservices? A: Substantively correct but conflated "different repos" with the real distinguishing factor — corrected: the real difference is one running process using in-process calls (modular monolith) vs. separate deployable processes communicating over a network (microservices); repository layout is a separate, orthogonal decision.
+2. Q: Why couldn't `IOrganizationDirectory` return `Organization` once it was marked `internal`? A: Correct — "çünkü artık internal yapıyoruz."
+3. Q: What is an ADR for? A: Not known initially; explained — a permanent record of *why* a decision was made, since code alone only shows *what* was done, not the reasoning a future reader would need to reconstruct it.
+
+**Independent task:** Add `GetById(int id)` to the module and a `GET /api/organizations/{id}` action, mirroring StockPilot Day 12's `GetById` pattern. Completed correctly and unassisted by Berkan; live-verified (200 for an existing id, 404 for a missing one).
+
+**Next session:** Phase 3, Week 7, Day 33 — a second module (likely `Employees`) or remaining Week 7 topics (SOLID, clean code), continuing to prove the modular-monolith pattern generalizes.

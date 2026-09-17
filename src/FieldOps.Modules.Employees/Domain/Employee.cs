@@ -1,0 +1,19 @@
+namespace FieldOps.Modules.Employees.Domain;
+
+// OrganizationId is a plain int — NOT a reference to the Organizations
+// module's Organization type. This module has no project reference to
+// FieldOps.Modules.Organizations at all (see ADR 0002) and doesn't need one:
+// it only ever stores and returns the identifier, the same way a foreign-key
+// column in a database doesn't need to "know" about the table it points to.
+internal class Employee
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public int OrganizationId { get; set; }
+
+    public Employee(string name, int organizationId)
+    {
+        Name = name;
+        OrganizationId = organizationId;
+    }
+}
