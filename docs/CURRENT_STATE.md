@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 7 — in progress
-* **Day:** 32 (complete)
+* **Day:** 33 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** FieldOps project started — a new `FieldOps.slnx` with a host (`FieldOps.Api`) and a first module (`FieldOps.Modules.Organizations`), the one-way dependency rule enforced by the compiler (not just convention) after a real `CS0050`/`CS0122` back-and-forth, and the first ADR recorded. 200/404 verified live for `GET /api/organizations` and `GET /api/organizations/{id}` (the latter added correctly and independently by Berkan).
+* **Status:** Second module (`FieldOps.Modules.Employees`) added; first real cross-module scenario (an Employee belongs to an Organization) resolved via host orchestration and a plain `int OrganizationId` rather than a module-to-module reference — recorded as ADR 0002. Live-verified: valid organization → 201, invalid organization → 400, and a query-parameter filter (`?organizationId=`) added correctly by Claude at Berkan's request after he asked for the syntax directly rather than guidance.
 * **Available study time:** 2 hours/day
-* **Progress:** ~29% (Day 32 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~30% (Day 33 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -259,6 +259,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * Understanding questions: Q1 (modular monolith vs. microservices) was substantively correct but conflated "different repos" with the real distinguishing factor — corrected: the real difference is one running process communicating via in-process calls (modular monolith) vs. separate deployable processes communicating over a network (microservices); repository organization (mono-repo vs. multi-repo) is an orthogonal decision many real microservice systems don't even split. Q2 (why `Organization` couldn't be returned once made `internal`) answered correctly. Q3 (purpose of an ADR) was unknown, explained directly (a permanent record of *why* a decision was made, since code alone only shows *what* was done).
 * Independent task (adding `GetById(int id)` to `IOrganizationDirectory`/`InMemoryOrganizationDirectory` and a `GET /api/organizations/{id}` action returning 404 when missing, mirroring StockPilot Day 12's `GetById` pattern) completed correctly and independently by Berkan — live-verified (200 for an existing id, 404 for a missing one).
 * Follow-up question answered: what `OrganizationSummary`/`OrganizationsModule` are and why they exist (the module's own public DTO, distinct from its HTTP-facing `OrganizationDto`; and the module's own DI-registration entry point, needed once its concrete implementation class became `internal`).
+* `FieldOps.Modules.Employees` added — `Employee` (domain, `internal`, with a plain `int OrganizationId`, not a reference to `Organization`), `IEmployeeDirectory`/`EmployeeSummary` (public contract, deliberately not validating `organizationId`), `InMemoryEmployeeDirectory` (`internal`), `EmployeesModule.AddEmployeesModule()` — the exact same enforced-boundary pattern Day 32 established, now proven to generalize to a second module.
+* `FieldOps.Api`: `EmployeesController.Create` performs the first real cross-module orchestration — calls `IOrganizationDirectory.GetById(organizationId)` before calling `IEmployeeDirectory.Create(...)`, returning `400` if the organization doesn't exist. Live-verified: valid `organizationId` → `201`; invalid → `400` with a clear message; `GET /api/employees` lists what was created.
+* `docs/adr/0002-cross-module-references-via-host-orchestration.md` — the second ADR, resolving ADR 0001's deliberately-deferred "how do modules call each other" question: never directly (no module-to-module project references), always via the host holding both modules' interfaces. Explicitly notes an unresolved referential-integrity gap (nothing keeps `Employee.OrganizationId` valid if an organization is later deleted) as future, persistence-era work, not solved today.
+* `docs/daily-code-notes/day-33.md` created (Turkish).
+* Understanding questions: Q1 and Q2 answered correctly and precisely, unprompted. Q3 ("çift yönlü bağımlılık" as the risk avoided) was partially correct — corrected: C#/MSBuild already makes literal circular project references impossible regardless of this convention; the actual risk avoided is an uncontrolled, ever-growing one-directional dependency web among many modules as more are added, which host-only orchestration keeps to a strict hub-and-spoke shape.
+* Independent task (adding an `organizationId` query-parameter filter to `EmployeesController.GetAll`, mirroring StockPilot Day 15's `search`/`sortBy` pattern) was written by Claude directly, at Berkan's explicit request ("senin yapmanı istiyorum") after he said he didn't know the syntax — live-verified (unfiltered returns both seeded employees, `?organizationId=1` returns only the matching one).
+* Follow-up question answered: why `.AsEnumerable()` was needed on the `IReadOnlyList<EmployeeSummary>` result before it could be reassigned via `.Where(...)` (`IEnumerable<T>` and `IReadOnlyList<T>` aren't assignment-compatible in the direction needed; fixing the variable's static type to `IEnumerable<T>` from its first assignment avoids a compile error) — the exact same reason `ProductsController.GetAll` (StockPilot Day 15) does the same thing.
 
 ## Decisions on record
 
@@ -284,12 +291,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 3, Week 7, Day 33: a second module (likely `Employees`, since Work Orders will eventually need both an Organization and an assigned Employee) or application-service/domain-rule concepts from Week 7's remaining topic list (SOLID, clean code) — exact scope to be finalized in the day's plan. `FieldOps.slnx` is not yet in CI (`.github/workflows/ci.yml` only builds/tests `StockPilot.slnx`/`RoadmapOS.slnx`) — worth deciding whether to add it soon.
+2. Begin Phase 3, Week 7, Day 34: remaining Week 7 topics — application services, SOLID, clean code — likely by revisiting `EmployeesController.Create`'s orchestration logic (currently living directly in a controller action) and asking whether it deserves its own application-service layer now that a second cross-module scenario is plausible (Work Orders will need both an Organization and an Employee). `FieldOps.slnx` is still not in CI — worth deciding whether to add it soon.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 7 / Day 33 expected outcome
+## Week 7 / Day 34 expected outcome
 
-* A second module demonstrating the same enforced-boundary pattern (`internal` domain + implementation, a narrow public interface/DTOs, its own `AddXModule()` registration), proving Day 32's pattern generalizes rather than being a one-off.
-* If a genuine cross-module scenario arises (e.g., an Employee belonging to an Organization), a first real decision about how modules reference each other — deliberately deferred on Day 32 rather than designed speculatively.
+* A concrete look at whether/when cross-module orchestration logic should move out of controller actions into a dedicated application-service layer — grounded in the real `EmployeesController.Create` example, not introduced speculatively (per `CLAUDE.md`'s rule against mechanical Clean Architecture).
+* Possibly `FieldOps.slnx` added to `.github/workflows/ci.yml`, closing the gap noted since Day 32.
 * Full regression across all three solutions (RoadmapOS, StockPilot, FieldOps).
 

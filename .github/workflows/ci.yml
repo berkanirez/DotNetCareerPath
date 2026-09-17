@@ -46,3 +46,14 @@ jobs:
 
       - name: Test RoadmapOS
         run: dotnet test RoadmapOS.slnx --no-build
+
+      # FieldOps's tests (Day 34) are pure in-memory fakes with no external
+      # dependency at all — no Docker/database consideration needed here.
+      - name: Restore FieldOps
+        run: dotnet restore FieldOps.slnx
+
+      - name: Build FieldOps
+        run: dotnet build FieldOps.slnx --no-restore
+
+      - name: Test FieldOps
+        run: dotnet test FieldOps.slnx --no-build

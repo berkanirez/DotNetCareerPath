@@ -1,6 +1,6 @@
+using FieldOps.Api.Application;
 using FieldOps.Api.Models;
 using FieldOps.Modules.Employees;
-using FieldOps.Modules.Organizations;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FieldOps.Api.Controllers;
@@ -10,12 +10,12 @@ namespace FieldOps.Api.Controllers;
 public class EmployeesController : ControllerBase
 {
     private readonly IEmployeeDirectory _employeeDirectory;
-    private readonly IOrganizationDirectory _organizationDirectory;
+    private readonly EmployeeApplicationService _employeeApplicationService;
 
-    public EmployeesController(IEmployeeDirectory employeeDirectory, IOrganizationDirectory organizationDirectory)
+    public EmployeesController(IEmployeeDirectory employeeDirectory, EmployeeApplicationService employeeApplicationService)
     {
         _employeeDirectory = employeeDirectory;
-        _organizationDirectory = organizationDirectory;
+        _employeeApplicationService = employeeApplicationService;
     }
 
     [HttpGet]
@@ -35,19 +35,17 @@ public class EmployeesController : ControllerBase
     [HttpPost]
     public ActionResult<EmployeeDto> Create(CreateEmployeeRequest request)
     {
-        // The host, not the Employees module, is responsible for validating
-        // that OrganizationId refers to a real Organization — Employees has
-        // no way to check this itself (ADR 0002: no reference between the
-        // two modules at all). This is the "orchestration" role the host
-        // plays whenever more than one module is involved in a single request.
-        var organization = _organizationDirectory.GetById(request.OrganizationId);
-        if (organization is null)
+        // The cross-module orchestration (does this organization exist? if
+        // so, create the employee) now lives entirely in
+        // EmployeeApplicationService (Day 34) — this action's only job is
+        // translating that plain result into an HTTP response.
+        var result = _employeeApplicationService.CreateEmployee(request.Name, request.OrganizationId);
+        if (!result.Succeeded)
         {
-            return BadRequest($"Organization {request.OrganizationId} does not exist.");
+            return BadRequest(result.Error);
         }
 
-        var employee = _employeeDirectory.Create(request.Name, request.OrganizationId);
-        var dto = new EmployeeDto(employee.Id, employee.Name, employee.OrganizationId);
+        var dto = new EmployeeDto(result.Employee!.Id, result.Employee.Name, result.Employee.OrganizationId);
         // No single-employee GetById action exists yet (out of today's scope,
         // which is the cross-module orchestration, not full Employees CRUD),
         // so there's no correct target for a Location header via

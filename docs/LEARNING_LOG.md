@@ -1254,3 +1254,39 @@ Copy this template for each new entry:
 **Independent task:** Add `GetById(int id)` to the module and a `GET /api/organizations/{id}` action, mirroring StockPilot Day 12's `GetById` pattern. Completed correctly and unassisted by Berkan; live-verified (200 for an existing id, 404 for a missing one).
 
 **Next session:** Phase 3, Week 7, Day 33 — a second module (likely `Employees`) or remaining Week 7 topics (SOLID, clean code), continuing to prove the modular-monolith pattern generalizes.
+
+### 2026-09-17 — Phase 3, Week 7, Day 33
+
+**Topic:** Second module (`Employees`) and the first real cross-module reference decision.
+
+**Problem solved:** ADR 0001 deliberately deferred "how will modules call each other" since no real scenario existed. Today's real scenario: an `Employee` must belong to an `Organization`. Resolved by having `FieldOps.Api` (the host) orchestrate between both modules' public interfaces, rather than letting `Employees` take a project reference to `Organizations`.
+
+**What I learned:** Confirmed, through a good self-correction opportunity, a subtlety about what the host-orchestration pattern actually prevents: not literal circular references (C#/MSBuild already makes those impossible regardless of convention), but an uncontrolled, ever-growing one-directional dependency web among many modules as more get added — keeping the graph a strict hub-and-spoke shape (host in the center) instead. Also explained, on request, why `.AsEnumerable()` was needed before reassigning a filtered result back to a variable originally typed from `IReadOnlyList<T>` (assignment-compatibility between `IEnumerable<T>` and `IReadOnlyList<T>` only goes one way) — the same reason `ProductsController.GetAll` (StockPilot Day 15) does the same thing.
+
+**What I implemented:**
+* `FieldOps.Modules.Employees` — `Employee` (domain, `internal`, with a plain `int OrganizationId` rather than a reference to `Organization`), `IEmployeeDirectory`/`EmployeeSummary` (public contract, deliberately not validating the organization id itself), `InMemoryEmployeeDirectory` (`internal`), `EmployeesModule.AddEmployeesModule()` — Day 32's enforced-boundary pattern applied a second time, unchanged.
+* `FieldOps.Api`'s `EmployeesController.Create` — the first real cross-module orchestration: calls `IOrganizationDirectory.GetById(organizationId)` before calling `IEmployeeDirectory.Create(...)`, returning `400` if the organization doesn't exist.
+* `docs/adr/0002-cross-module-references-via-host-orchestration.md` — resolves ADR 0001's deferred question; explicitly flags an unresolved referential-integrity gap (nothing keeps `Employee.OrganizationId` valid if the organization is later deleted) as future, persistence-era work.
+* Independent task, written by Claude directly at Berkan's request ("senin yapmanı istiyorum") after he said he didn't know the syntax: an `organizationId` query-parameter filter added to `EmployeesController.GetAll`, mirroring StockPilot Day 15's `search`/`sortBy` pattern exactly (including the same `.AsEnumerable()` technique).
+
+**Runtime flow:** `POST /api/employees` → host checks `IOrganizationDirectory.GetById(organizationId)` first → `400` if missing, otherwise `IEmployeeDirectory.Create(...)` runs and a `201` is returned. `GET /api/employees?organizationId=1` filters the module's full list in the host, after retrieval — the module itself never filters by organization, since it has no concept of what an organization even is. Full trace in `docs/daily-code-notes/day-33.md`.
+
+**Verification:**
+* `dotnet build` (FieldOps, StockPilot, RoadmapOS) → 0 errors/warnings across all three.
+* Live: valid `organizationId` → `201` with correct employee data; invalid → `400` with a clear message; `GET /api/employees` lists what was created; `FieldOps.Modules.Employees.csproj` confirmed to carry zero `<ProjectReference>` entries (still no dependency on `Organizations`).
+* Independent task live-verified: unfiltered `GET /api/employees` returned both seeded employees; `?organizationId=1` returned only the matching one.
+
+**Evidence:** A real, working cross-module scenario resolved via a deliberate, documented architectural choice (not the tempting direct-reference shortcut); a second ADR recording that choice and its known gap; an independent task completed correctly (by Claude, at Berkan's explicit request) and live-verified; commit (`143fbbb`, pushed, bundled with Day 32's pending doc updates).
+
+**Mistakes or difficulties:** None blocking. Q3's answer ("çift yönlü bağımlılık") was a reasonable but imprecise guess at the risk being prevented — corrected with the more accurate mechanism (an uncontrolled web of one-way dependencies, not cycles, which the tooling already forbids anyway).
+
+**Production considerations:** Host-orchestrated cross-module calls with plain-ID references is a genuinely production-grade pattern, matching how the eventual Phase 4 service split would need to work anyway. The unresolved referential-integrity gap (ADR 0002) is honestly flagged as a real limitation of the current in-memory, pre-persistence stage, not hidden.
+
+**Understanding questions and answers:**
+1. Q: Why doesn't `Employees` reference `Organizations` directly, and what happens instead? A: Correct, unprompted — the host (controller) does the id check and then creates; no reference because modules shouldn't know about each other.
+2. Q: What does the host's "orchestration" role mean, concretely? A: Correct, unprompted — it enables communication between modules; `EmployeesController` knowing about both `IEmployeeDirectory` and `IOrganizationDirectory` is the example.
+3. Q: What risk does plain-ID + host-orchestration avoid, versus direct module-to-module references? A: Answered as "çift yönlü bağımlılık" (bidirectional/circular dependency) — corrected: C#/MSBuild already makes literal circular project references impossible regardless of this convention; the actual risk avoided is an uncontrolled, ever-growing one-directional dependency web among many modules as more are added.
+
+**Independent task:** Add an `organizationId` query-parameter filter to `EmployeesController.GetAll`, mirroring StockPilot Day 15's `search`/`sortBy` pattern. Written by Claude directly, at Berkan's explicit one-time request, after he said he didn't know the syntax; live-verified.
+
+**Next session:** Phase 3, Week 7, Day 34 — remaining Week 7 topics (application services, SOLID, clean code), likely examining whether `EmployeesController.Create`'s orchestration logic now warrants its own application-service layer.
