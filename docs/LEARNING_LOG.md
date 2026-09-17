@@ -1290,3 +1290,39 @@ Copy this template for each new entry:
 **Independent task:** Add an `organizationId` query-parameter filter to `EmployeesController.GetAll`, mirroring StockPilot Day 15's `search`/`sortBy` pattern. Written by Claude directly, at Berkan's explicit one-time request, after he said he didn't know the syntax; live-verified.
 
 **Next session:** Phase 3, Week 7, Day 34 — remaining Week 7 topics (application services, SOLID, clean code), likely examining whether `EmployeesController.Create`'s orchestration logic now warrants its own application-service layer.
+
+### 2026-09-17 — Phase 3, Week 7, Day 34 (Week 7 topics complete)
+
+**Topic:** Application-service extraction (SRP); FieldOps's first automated tests; `FieldOps.slnx` added to CI.
+
+**Problem solved:** `EmployeesController.Create` mixed three concerns (HTTP translation, cross-module business orchestration, DTO mapping) in one method. Extracted the orchestration into `EmployeeApplicationService`, a plain C# class with zero ASP.NET Core dependency, giving the controller exactly one remaining responsibility.
+
+**What I learned:** Both understanding-question answers landed correctly, including a terse but accurate "http" for what the controller's sole remaining reason to change now is. The comparison-to-Day-14 question required direct explanation: both days introduced a layer in response to a real, lived problem rather than an abstract principle, but Day 14's problem was test isolation (code was *not* directly testable before), while today's was pure responsibility-mixing (the code was already directly testable, as StockPilot's own controller tests have shown all along — the motivation here was clarity/SRP, not enabling testing that was otherwise impossible). The independent task surfaced a real overgeneralization worth catching: treating "SRP means controllers should only do HTTP" as a universal rule would justify extracting an application service for *every* action, including `OrganizationsController.GetAll`/`GetById`, which were deliberately left untouched because they involve only one dependency and no real cross-cutting business rule — exactly the mechanical Clean-Architecture layering `CLAUDE.md` warns against. The corrected framing: extraction is warranted by genuine cross-module coordination or non-trivial business rules, not by the presence of a "Create" action or a general appeal to SRP.
+
+**What I implemented:**
+* `EmployeeCreationResult` (plain outcome type, private constructor + `Success`/`Failure` factories to prevent inconsistent states) and `EmployeeApplicationService` (the orchestration moved out of the controller, no ASP.NET Core dependency) added under `src/FieldOps.Api/Application/`.
+* `EmployeesController.Create` reduced to calling the service and translating its result to an HTTP response; `Program.cs` registers the service directly (`AddScoped`, not a module-style extension method, since it's the host's own class).
+* `tests/FieldOps.Api.Tests` — FieldOps's first automated test project; `EmployeeApplicationServiceTests` uses hand-written `FakeOrganizationDirectory`/`FakeEmployeeDirectory` (not Moq, following `InMemoryProductStore`'s precedent for small interfaces) to prove both the success and failure paths with zero HTTP/database involvement.
+* `.github/workflows/ci.yml`: `FieldOps.slnx` restore/build/test steps added — closing the gap open since Day 32; FieldOps needs no Docker/database setup at all for its tests.
+
+**Runtime flow:** `POST /api/employees` → `EmployeesController.Create` calls `EmployeeApplicationService.CreateEmployee(name, organizationId)` → the service checks `IOrganizationDirectory.GetById`, then either fails or calls `IEmployeeDirectory.Create` → returns a plain `EmployeeCreationResult` → the controller translates that into `400`/`201`. Full trace, including the before/after controller comparison, in `docs/daily-code-notes/day-34.md`.
+
+**Verification:**
+* `dotnet build` (FieldOps) → 0 errors/warnings. `dotnet test FieldOps.slnx` → 2/2 (first-ever automated FieldOps tests).
+* Live HTTP regression: `POST /api/employees` with a valid/invalid `organizationId` returns identical `201`/`400` behavior to before the refactor.
+* `dotnet test RoadmapOS.slnx` → 8/8, unaffected. `dotnet test StockPilot.slnx` → 23/27, with the 4 failures traced to Docker Desktop not running locally at the time (Day 28's Testcontainers-based integration tests) — an environmental condition unrelated to today's change, identified and reported honestly rather than glossed over.
+
+**Evidence:** A real SRP-driven refactor grounded in an actual mixed-responsibility problem, not mechanical layering; FieldOps's first automated, HTTP-free tests; CI now covers all three solutions; an honestly-diagnosed, unrelated environmental test failure; a caught-and-corrected overgeneralization about when application services are warranted; commit (`a7ca93d`, pushed).
+
+**Mistakes or difficulties:** None on the implementation side. The independent task's answer reasoned from a rule ("SRP ⇒ controllers only do HTTP") rather than from the specific complexity of the operation in question — a useful reminder that principles like SRP describe a goal, not a mechanical trigger for adding layers.
+
+**Production considerations:** The extracted `EmployeeApplicationService` pattern is genuinely reusable for future cross-module operations (Work Orders will very likely need something similar, coordinating Organizations + Employees + itself) — but, per today's corrected understanding, only for operations that actually warrant it, not applied blanket-style to every action.
+
+**Understanding questions and answers:**
+1. Q: Concrete example of SRP today — what's `EmployeesController`'s one remaining reason to change? A: Correct, terse — "http" (its HTTP shape).
+2. Q: Why does `EmployeeCreationResult` exist instead of using `ActionResult` directly? A: Correct — the service layer doesn't know ASP.NET Core exists, so it can't know `ActionResult` either.
+3. Q: Parallel and difference with StockPilot Day 14's `IProductStore` extraction? A: Not known initially; explained — both responded to a real lived problem rather than an abstract principle, but Day 14's problem was test isolation (untestable before), while today's was responsibility-mixing (already testable, just doing too much in one place).
+
+**Independent task:** Would a future, single-module `Organizations.Create` also warrant its own `OrganizationApplicationService`? Answered with a real overgeneralization ("SRP olmalı, controller sadece HTTP yönetsin," treated as a universal rule) — corrected: `Organizations.GetAll`/`GetById` were deliberately left in the controller with no service, since they involve one dependency and no real cross-cutting rule; a simple, single-module `Create` would be no different, and extracting a service for it purely because "it's a Create" would be exactly the mechanical layering `CLAUDE.md` warns against.
+
+**Next session:** Phase 3, Week 8, Day 35 — multi-tenancy and tenant isolation (Week 8's first topic; Week 7's full topic list is now complete).

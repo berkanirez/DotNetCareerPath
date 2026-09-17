@@ -18,28 +18,50 @@ public class EmployeesController : ControllerBase
         _employeeApplicationService = employeeApplicationService;
     }
 
+    // Day 35: [FromQuery] int? organizationId = null used to make tenant
+    // scoping OPTIONAL and entirely client-controlled — proven live to leak
+    // every organization's employees together when omitted, and to let any
+    // caller request any other organization's data just by passing its id.
+    //
+    // First fix attempt used a non-nullable [FromHeader] int, on the
+    // (untested) assumption that a missing header would fail model binding
+    // with a 400. Live-checked and found FALSE: a missing header silently
+    // bound to 0 instead, returning 200 with an empty list — not a rejection
+    // at all, just a query that happened to match nothing. Using `int?`
+    // instead lets a genuinely absent header be told apart from any real
+    // value, so it can be rejected explicitly.
     [HttpGet]
-    public ActionResult<IReadOnlyList<EmployeeDto>> GetAll([FromQuery] int? organizationId = null)
+    public ActionResult<IReadOnlyList<EmployeeDto>> GetAll([FromHeader(Name = "X-Organization-Id")] int? organizationId)
     {
-        var employees = _employeeDirectory.GetAll().AsEnumerable();
-
-        if (organizationId is not null)
+        if (organizationId is null)
         {
-            employees = employees.Where(e => e.OrganizationId == organizationId);
+            return BadRequest("X-Organization-Id header is required.");
         }
 
-        var dtos = employees.Select(e => new EmployeeDto(e.Id, e.Name, e.OrganizationId)).ToList();
-        return Ok(dtos);
+        var employees = _employeeDirectory.GetAll()
+            .Where(e => e.OrganizationId == organizationId)
+            .Select(e => new EmployeeDto(e.Id, e.Name, e.OrganizationId))
+            .ToList();
+
+        return Ok(employees);
     }
 
     [HttpPost]
-    public ActionResult<EmployeeDto> Create(CreateEmployeeRequest request)
+    public ActionResult<EmployeeDto> Create(
+        CreateEmployeeRequest request,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId)
     {
+        if (organizationId is null)
+        {
+            return BadRequest("X-Organization-Id header is required.");
+        }
+
         // The cross-module orchestration (does this organization exist? if
         // so, create the employee) now lives entirely in
         // EmployeeApplicationService (Day 34) — this action's only job is
-        // translating that plain result into an HTTP response.
-        var result = _employeeApplicationService.CreateEmployee(request.Name, request.OrganizationId);
+        // translating that plain result into an HTTP response. organizationId
+        // now comes from the header, never from the request body (Day 35).
+        var result = _employeeApplicationService.CreateEmployee(request.Name, organizationId.Value);
         if (!result.Succeeded)
         {
             return BadRequest(result.Error);

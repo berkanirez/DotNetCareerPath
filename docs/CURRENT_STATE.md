@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 7 — in progress
-* **Day:** 33 (complete)
+* **Day:** 34 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** Second module (`FieldOps.Modules.Employees`) added; first real cross-module scenario (an Employee belongs to an Organization) resolved via host orchestration and a plain `int OrganizationId` rather than a module-to-module reference — recorded as ADR 0002. Live-verified: valid organization → 201, invalid organization → 400, and a query-parameter filter (`?organizationId=`) added correctly by Claude at Berkan's request after he asked for the syntax directly rather than guidance.
+* **Status:** `EmployeesController.Create`'s cross-module orchestration extracted into `EmployeeApplicationService` (an ASP.NET Core-free class), applying SRP to fix a real mixed-responsibility problem, not a mechanical layering exercise. FieldOps's first automated tests added (hand-written fakes, no HTTP/Docker involved) and `FieldOps.slnx` added to CI, closing a gap open since Day 32. Live-verified: identical HTTP behavior before/after the refactor.
 * **Available study time:** 2 hours/day
-* **Progress:** ~30% (Day 33 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~31% (Day 34 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -266,6 +266,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * Understanding questions: Q1 and Q2 answered correctly and precisely, unprompted. Q3 ("çift yönlü bağımlılık" as the risk avoided) was partially correct — corrected: C#/MSBuild already makes literal circular project references impossible regardless of this convention; the actual risk avoided is an uncontrolled, ever-growing one-directional dependency web among many modules as more are added, which host-only orchestration keeps to a strict hub-and-spoke shape.
 * Independent task (adding an `organizationId` query-parameter filter to `EmployeesController.GetAll`, mirroring StockPilot Day 15's `search`/`sortBy` pattern) was written by Claude directly, at Berkan's explicit request ("senin yapmanı istiyorum") after he said he didn't know the syntax — live-verified (unfiltered returns both seeded employees, `?organizationId=1` returns only the matching one).
 * Follow-up question answered: why `.AsEnumerable()` was needed on the `IReadOnlyList<EmployeeSummary>` result before it could be reassigned via `.Where(...)` (`IEnumerable<T>` and `IReadOnlyList<T>` aren't assignment-compatible in the direction needed; fixing the variable's static type to `IEnumerable<T>` from its first assignment avoids a compile error) — the exact same reason `ProductsController.GetAll` (StockPilot Day 15) does the same thing.
+* `src/FieldOps.Api/Application/EmployeeCreationResult.cs` (a plain outcome type, private constructor + `Success`/`Failure` factory methods to prevent inconsistent states) and `EmployeeApplicationService.cs` (the cross-module orchestration moved out of `EmployeesController.Create`, with zero ASP.NET Core dependency) added; `EmployeesController.Create` reduced to translating the service's result into an HTTP response; `Program.cs` registers the service directly (`AddScoped`, not a module-style extension method, since it's the host's own class, not something needing to hide an `internal` implementation).
+* `tests/FieldOps.Api.Tests` — FieldOps's first automated test project. `EmployeeApplicationServiceTests` uses hand-written `FakeOrganizationDirectory`/`FakeEmployeeDirectory` (not Moq, matching `InMemoryProductStore`'s precedent for small interfaces) to prove both the success and failure paths of `CreateEmployee` without any HTTP pipeline or database involved.
+* `.github/workflows/ci.yml`: `FieldOps.slnx` restore/build/test steps added, closing the gap open since Day 32 — FieldOps's tests need no Docker/database setup at all, unlike StockPilot's.
+* Live proof: `POST /api/employees` returns identical HTTP behavior before and after the refactor (`201`/`400` unchanged); `dotnet test FieldOps.slnx` → 2/2 (first-ever automated FieldOps tests); `dotnet test StockPilot.slnx` showed 4 unrelated failures (Day 28's Testcontainers-based integration tests) because Docker Desktop was not running on the machine at the time — an environmental condition, honestly identified and separated from today's actual change, not silently attributed to FieldOps work.
+* `docs/daily-code-notes/day-34.md` created (Turkish).
+* Understanding questions: Q1 and Q2 answered correctly (Q1 tersely: "http," confirmed as correct — the controller's only remaining reason to change is its HTTP shape). Q3 (parallel/difference with StockPilot Day 14's `IProductStore` extraction) was unknown, explained: both introduced a layer in response to a real, lived problem rather than an abstract principle, but Day 14's problem was test isolation (a `static` list breaking tests) while today's was responsibility-mixing (a controller doing HTTP + business rule + mapping at once) — code was already directly testable before today's extraction, unlike Day 14.
+* Independent task (should a future, single-module `Organizations.Create` also get its own `OrganizationApplicationService`?) surfaced a real overgeneralization worth correcting: Berkan's answer ("SRP olmalı, controller sadece HTTP yönetsin") treated extraction as a universal rule. Corrected — `OrganizationsController.GetAll`/`GetById` were deliberately left directly in the controller with no application service, and a simple, single-dependency `Create` would be no different in complexity; `EmployeeApplicationService` exists specifically because `Create` coordinates *two* modules and a real business rule, not merely because "creating something" warrants a service. Extracting one for a genuinely simple, single-module operation would be exactly the mechanical Clean-Architecture layering `CLAUDE.md` warns against.
 
 ## Decisions on record
 
@@ -291,12 +298,12 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 3, Week 7, Day 34: remaining Week 7 topics — application services, SOLID, clean code — likely by revisiting `EmployeesController.Create`'s orchestration logic (currently living directly in a controller action) and asking whether it deserves its own application-service layer now that a second cross-module scenario is plausible (Work Orders will need both an Organization and an Employee). `FieldOps.slnx` is still not in CI — worth deciding whether to add it soon.
+2. Begin Phase 3, Week 8, Day 35: multi-tenancy and tenant isolation — the first topic on Week 8's list (`docs/ROADMAP.md`: multi-tenancy, tenant identification, tenant isolation, membership, granular RBAC, authorization tests, cross-tenant attack scenarios). Week 7's full topic list (modular-monolith boundaries, dependency direction, application services, SOLID, ADRs) is now complete.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
-## Week 7 / Day 34 expected outcome
+## Week 8 / Day 35 expected outcome
 
-* A concrete look at whether/when cross-module orchestration logic should move out of controller actions into a dedicated application-service layer — grounded in the real `EmployeesController.Create` example, not introduced speculatively (per `CLAUDE.md`'s rule against mechanical Clean Architecture).
-* Possibly `FieldOps.slnx` added to `.github/workflows/ci.yml`, closing the gap noted since Day 32.
-* Full regression across all three solutions (RoadmapOS, StockPilot, FieldOps).
+* A concrete tenant-identification mechanism (likely: which `Organization` a request is acting on behalf of — via a header, a claim, or a route segment) — `Organization` already exists as the tenant concept since Day 32, so this builds directly on it rather than introducing a new one.
+* A first, real tenant-isolation proof: a request scoped to one organization cannot see another organization's employees — likely surfaced through `EmployeesController.GetAll`'s existing `organizationId` filter, examined for whether it's actually enforced or just optional today (it is currently optional/client-supplied, which is itself worth confronting honestly).
+* Full regression across all three solutions.
 
