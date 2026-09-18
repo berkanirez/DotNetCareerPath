@@ -1326,3 +1326,73 @@ Copy this template for each new entry:
 **Independent task:** Would a future, single-module `Organizations.Create` also warrant its own `OrganizationApplicationService`? Answered with a real overgeneralization ("SRP olmalı, controller sadece HTTP yönetsin," treated as a universal rule) — corrected: `Organizations.GetAll`/`GetById` were deliberately left in the controller with no service, since they involve one dependency and no real cross-cutting rule; a simple, single-module `Create` would be no different, and extracting a service for it purely because "it's a Create" would be exactly the mechanical layering `CLAUDE.md` warns against.
 
 **Next session:** Phase 3, Week 8, Day 35 — multi-tenancy and tenant isolation (Week 8's first topic; Week 7's full topic list is now complete).
+
+### 2026-09-17 — Phase 3, Week 8, Day 35
+
+**Topic:** Multi-tenancy and tenant isolation — closing a real cross-tenant data leak.
+
+**Problem solved:** Day 33's `?organizationId=` query filter on `EmployeesController.GetAll` was entirely optional and client-controlled — proven live to leak every organization's employees together when omitted, and to let any caller explicitly request another organization's data. Replaced with a mandatory `X-Organization-Id` header, with the request itself failing (`400`) if it's missing.
+
+**What I learned:** A live-caught, genuinely useful correction of my own untested assumption: the first fix (`[FromHeader] int organizationId`, non-nullable, no default) was written on the belief that ASP.NET Core would reject a request with a missing header via automatic model validation — this was checked live and found false. A missing header for a non-nullable value-type parameter silently binds to that type's default (`0`) rather than failing; there is no "required" concept for this binding source on a plain `int`. `int?` plus an explicit `if (organizationId is null)` check is what actually makes the requirement real. This is a good, concrete example of why every claim about framework behavior in this workspace gets checked live rather than assumed, even ones that "should obviously be true." Also confirmed via a follow-up: the `0` default isn't caused by the parameter "being required" — it's the opposite, a non-nullable value type has no way to express "required" to this binding source at all.
+
+**What I implemented:**
+* Live proof of the vulnerability first: unfiltered `GET /api/employees` returned employees from two different organizations together; `?organizationId=2` let a caller pull another organization's data on request.
+* `Models/CreateEmployeeRequest.cs`: `OrganizationId` removed from the request body — no longer something the client states.
+* `EmployeesController.GetAll`/`Create`: switched to `[FromHeader(Name = "X-Organization-Id")] int? organizationId` with an explicit null check returning `400` — the corrected version, after the non-nullable-`int` attempt was proven wrong live.
+* Independent task, done live together after Berkan predicted (but didn't run) the outcome: creating an employee under a nonexistent `X-Organization-Id` (`999`) returns `400` with `"Organization 999 does not exist."` — traced to the exact responsible code, `EmployeeApplicationService.CreateEmployee`'s existing `_organizationDirectory.GetById` check (unchanged since Day 33/34; today's change only altered where `organizationId` comes from).
+
+**Runtime flow:** `GET /api/employees` (or `POST`) → `[FromHeader]` binds `X-Organization-Id` as `int?` → `null` (header absent) → immediate `400`; a real value → the module's full employee list is filtered to exactly that organization, unconditionally, with no way for the client to opt out or request a different one via the request itself. Full trace, including both the vulnerability and the wrong-then-right fix attempts, in `docs/daily-code-notes/day-35.md`.
+
+**Verification:**
+* `dotnet build` (FieldOps) → 0 errors/warnings. `dotnet test FieldOps.slnx` → 2/2, unaffected (application-service tests never touch the HTTP layer).
+* Live, in this exact order: vulnerability triggered (cross-tenant leak confirmed) → first fix attempt tested and found to NOT reject a missing header (`200` + empty list, not `400`) → corrected fix tested and confirmed genuinely rejecting (`400`) while preserving correct per-organization filtering → independent task's nonexistent-organization scenario confirmed (`400` with the expected message).
+* `dotnet build` (StockPilot, RoadmapOS) → both unaffected.
+
+**Evidence:** A real security vulnerability proven live before being fixed (not merely described); a real, live-caught wrong assumption about framework behavior, corrected before being shipped; an independent task completed live together with the exact responsible code traced and explained; commit (`d151268`, pushed).
+
+**Mistakes or difficulties:** The first fix attempt shipped a claim ("model binding will reject a missing header") without checking it live first — caught before finalizing docs because verification is a to standard practice in this workspace, not an afterthought. Worth remembering as a concrete example for future claims about ASP.NET Core's automatic behaviors specifically around `[FromHeader]`/`[FromQuery]` with non-nullable value types.
+
+**Production considerations:** `X-Organization-Id` is still a plain, client-supplied header with no identity verification behind it — explicitly flagged as today's deliberate simplification, mirroring StockPilot's pre-Day-23 no-authentication state. Real tenant identification would come from a verified identity (a JWT claim, most likely, per Berkan's own prediction), not a header the client could simply lie about.
+
+**Understanding questions and answers:**
+1. Q: Why does `[FromHeader] int organizationId` (non-nullable) silently become `0` instead of failing when the header is missing? A: Needed a small correction — not "because it's required," but the opposite: a non-nullable value type has no way to express "required" to this binding source, so absence just becomes the type's default value; `int?` is what makes "genuinely absent" distinguishable from "a real value of 0."
+2. Q: Why was the old `?organizationId=` pattern a real security vulnerability, using today's concrete curl evidence? A: Correct, unprompted — a client could either omit the filter entirely (see everyone) or supply any other organization's id (see their data) since nothing enforced or validated it.
+3. Q: Why is `X-Organization-Id` still being client-modifiable a deliberate limitation today, and what would fixing it require? A: Correct, unprompted — it will likely need to move into a session or JWT token, attached to every request automatically rather than trusted from a plain header.
+
+**Independent task:** Predict, then verify live, what happens when creating an employee under a nonexistent `X-Organization-Id`. Predicted correctly (rejection) but not run independently — completed live together, confirmed `400`, and the exact pre-existing validation code responsible was traced and explained.
+
+**Next session:** Phase 3, Week 8, Day 36 — automated authorization/cross-tenant tests, closing the "only proven live" gap for today's tenant isolation the same way StockPilot's Day 27 did for `[Authorize]`.
+
+### 2026-09-18 — Phase 3, Week 8, Day 36
+
+**Topic:** Automated HTTP integration tests for Day 35's tenant isolation — turning a live-only proof into a permanent, repeatable guarantee.
+
+**Problem solved:** Day 35's fix (mandatory `X-Organization-Id` header, real cross-tenant filtering) was only ever verified by hand with curl. Nothing would catch a future regression (e.g., someone accidentally deleting the null check) except another manual check. Added a real `WebApplicationFactory`-backed integration test suite that exercises the actual HTTP pipeline (routing, model binding, controller, application service, both modules) end to end.
+
+**What I learned:** A second live-caught correction of a taught-without-testing assumption, this time about the SDK rather than the app: StockPilot Day 27 taught `public partial class Program { }` as necessary for `WebApplicationFactory<Program>` to reach `Program` from a separate test assembly. Adding it today triggered an IDE hint (`ASP0027`) claiming it's no longer required in current ASP.NET Core. Verified live rather than trusting either the old teaching or the new hint: removed the marker, added a real `WebApplicationFactory<Program>`-based test class in `FieldOps.Api.Tests`, and confirmed `dotnet build FieldOps.slnx` succeeds with 0 errors/warnings without it. The exact SDK mechanism (why this changed) wasn't fully traced — a `grep` for `InternalsVisibleTo` in the build output came back empty — so the finding is recorded as an empirically confirmed fact, not a fully explained mechanism.
+
+**What I implemented:**
+* Added `Microsoft.AspNetCore.Mvc.Testing` to `tests/FieldOps.Api.Tests/FieldOps.Api.Tests.csproj`.
+* Confirmed `public partial class Program { }` is not needed in this .NET 10 setup (left out of `Program.cs`).
+* `EmployeesAuthorizationIntegrationTests.cs` (new): missing-header → `400` for both `GetAll` and `Create`; nonexistent-organization → `400`; the core cross-tenant isolation proof (an employee created under org 1's header never appears when listing under org 2's header, and does appear under org 1's); a success-path test (valid header → `201 Created`, response body's `OrganizationId` matches the header) added as today's independent task.
+* Live Red→Green proof: temporarily commented out `GetAll`'s null check, confirmed `GetAll_NoOrganizationHeader_ReturnsBadRequest` genuinely failed (`Expected: BadRequest, Actual: OK`), restored it, confirmed all tests green again.
+
+**Runtime flow:** Test → `WebApplicationFactory<Program>.CreateClient()` (an in-memory `HttpClient`, no real network/port) → real ASP.NET Core pipeline (routing → model binding → `EmployeesController` → `EmployeeApplicationService`/`IEmployeeDirectory` → modules) → real `HttpResponseMessage`, asserted on directly. Unlike Day 34's `EmployeeApplicationServiceTests` (service called directly, no HTTP), this is the only way to actually exercise `[FromHeader]` binding behavior.
+
+**Verification:**
+* `dotnet build FieldOps.slnx` → 0 errors/warnings (with and without the `Program` marker, confirming it's unnecessary here).
+* `dotnet test FieldOps.slnx` → 7/7 passing (2 Day 34 service tests + 5 new integration tests).
+* Live Red→Green: null check removed → target test failed with the exact expected mismatch; check restored → full suite green again.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+
+**Evidence:** A second self-corrected, live-verified assumption (this time about the .NET SDK itself, not app code) documented honestly rather than silently adopted; a genuine Red→Green demonstration proving the new tests actually test something; an independent task with two real, live-caught bugs (wrong expected status code, missing response-body assertion) corrected by Berkan after review, ending at 7/7 green; commit pending.
+
+**Mistakes or difficulties:** Berkan's first version of the independent task's test asserted `HttpStatusCode.OK` for a `Create` response and never read the response body — both caught by actually running the test (`Expected: OK, Actual: Created`) rather than by inspection. Reinforces `EmployeesController.Create`'s deliberate `201 Created` (not `200 OK`) for a resource-creation endpoint, consistent with StockPilot's `Products.Create`.
+
+**Production considerations:** These integration tests run against `WebApplicationFactory`'s in-memory server — no real network, port, or TLS handshake, a known simplification since StockPilot Day 27. The value they prove (correct wiring across routing/model-binding/controller/service/modules) doesn't depend on that difference.
+
+**Understanding questions and answers:** Berkan answered "bilmiyorum" to all three questions this session (why the nonexistent-organization test was still needed alongside Day 34's service-level test; why unique employee names matter given the Singleton-backed stores; why breaking only `GetAll`'s null check didn't also fail `Create`'s tests) — each was then explained in full with concrete code references (Q1: unit test proves the rule, integration test proves the controller's translation of that rule into HTTP is wired correctly, e.g. `if (!result.Succeeded) return BadRequest(...)` could silently break without this coverage; Q2: fixed names risk collision across the whole test-class-shared singleton list, corrupting `Contains`/`DoesNotContain` assertions; Q3: `GetAll` and `Create` each have their own separate, independently-written null check, so breaking one has no effect on the other).
+
+**Independent task:** Add a test proving the success path of `Create` (valid header → `201 Created`, body's `OrganizationId` matches). Completed with two real bugs on the first pass (asserted `200 OK` instead of `201 Created`; never read/asserted the response body) — both explained and corrected by Berkan; final version passes as part of the 7/7 green suite.
+
+**Next session:** Phase 3, Week 8 continues — likely membership/role-based authorization or a transition toward Week 9's work-order lifecycle; exact topic to be decided at the start of the next session per the standing planning protocol.
