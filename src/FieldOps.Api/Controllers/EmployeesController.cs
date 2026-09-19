@@ -30,12 +30,40 @@ public class EmployeesController : ControllerBase
     // at all, just a query that happened to match nothing. Using `int?`
     // instead lets a genuinely absent header be told apart from any real
     // value, so it can be rejected explicitly.
+    //
+    // Day 39: even after that fix, this action still had NO identity check
+    // at all — X-Organization-Id alone was enough, X-Employee-Id was never
+    // asked for. Live-proven exploit: anyone, with zero credentials, could
+    // read any organization's full employee list just by naming its id.
+    // Brought up to the same membership standard as Create (Day 38): a real,
+    // existing employee whose own OrganizationId matches the one being
+    // queried. Deliberately NOT role-restricted (Admin vs Member) — that
+    // stays the open product question from Day 37's independent task; this
+    // only closes the "no identity at all" hole.
     [HttpGet]
-    public ActionResult<IReadOnlyList<EmployeeDto>> GetAll([FromHeader(Name = "X-Organization-Id")] int? organizationId)
+    public ActionResult<IReadOnlyList<EmployeeDto>> GetAll(
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
     {
         if (organizationId is null)
         {
             return BadRequest("X-Organization-Id header is required.");
+        }
+
+        if (actingEmployeeId is null)
+        {
+            return BadRequest("X-Employee-Id header is required.");
+        }
+
+        var actingEmployee = _employeeDirectory.GetById(actingEmployeeId.Value);
+        if (actingEmployee is null)
+        {
+            return BadRequest($"Employee {actingEmployeeId} does not exist.");
+        }
+
+        if (actingEmployee.OrganizationId != organizationId)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "You can only view employees within your own organization.");
         }
 
         var employees = _employeeDirectory.GetAll()

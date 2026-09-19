@@ -36,6 +36,34 @@ public class EmployeesAuthorizationIntegrationTests : IClassFixture<WebApplicati
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    // Day 39: this was the exact exploit live-proven before the fix existed —
+    // GetAll required X-Organization-Id but never asked who was asking at
+    // all. With no X-Employee-Id whatsoever (not even a fake one, unlike
+    // Create's Day 38 exploit), anyone could read any organization's full
+    // employee list.
+    [Fact]
+    public async Task GetAll_NoEmployeeHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Organization-Id", "2");
+
+        var response = await client.GetAsync("/api/employees");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetAll_ByEmployeeFromAnotherOrganization_ReturnsForbidden()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Organization-Id", "2");
+        client.DefaultRequestHeaders.Add("X-Employee-Id", "1"); // seeded Org1 Admin, targeting Org 2's list
+
+        var response = await client.GetAsync("/api/employees");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task Create_NoOrganizationHeader_ReturnsBadRequest()
     {
@@ -112,6 +140,7 @@ public class EmployeesAuthorizationIntegrationTests : IClassFixture<WebApplicati
         org1Client.DefaultRequestHeaders.Add("X-Employee-Id", "1"); // seeded Org1 Admin
         var org2Client = _factory.CreateClient();
         org2Client.DefaultRequestHeaders.Add("X-Organization-Id", "2");
+        org2Client.DefaultRequestHeaders.Add("X-Employee-Id", "3"); // seeded Org2 Admin
 
         var createResponse = await org1Client.PostAsJsonAsync("/api/employees", new { Name = $"Org1-Only-{uniqueSuffix}" });
         createResponse.EnsureSuccessStatusCode();
