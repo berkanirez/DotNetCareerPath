@@ -81,6 +81,18 @@ public class EmployeesController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, "Only an Admin can create employees.");
         }
 
+        // Day 38: Day 37's Admin check alone was not enough — it never asked
+        // WHICH organization the acting Admin is actually an Admin of.
+        // Live-proven exploit before this line existed: Org 1's Admin could
+        // create an employee in Org 2 just by sending Org 2's
+        // X-Organization-Id, because nothing here ever compared it against
+        // the acting employee's own OrganizationId. This is horizontal
+        // privilege escalation — the right role, but for the wrong tenant.
+        if (actingEmployee.OrganizationId != organizationId)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "An Admin can only create employees within their own organization.");
+        }
+
         // The cross-module orchestration (does this organization exist? if
         // so, create the employee) now lives entirely in
         // EmployeeApplicationService (Day 34) — this action's only job is

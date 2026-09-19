@@ -1396,3 +1396,39 @@ Copy this template for each new entry:
 **Independent task:** Add a test proving the success path of `Create` (valid header → `201 Created`, body's `OrganizationId` matches). Completed with two real bugs on the first pass (asserted `200 OK` instead of `201 Created`; never read/asserted the response body) — both explained and corrected by Berkan; final version passes as part of the 7/7 green suite.
 
 **Next session:** Phase 3, Week 8 continues — likely membership/role-based authorization or a transition toward Week 9's work-order lifecycle; exact topic to be decided at the start of the next session per the standing planning protocol.
+
+### 2026-09-19 — Phase 3, Week 8, Day 37
+
+**Topic:** Membership and a first granular RBAC rule — an employee's role within its own organization, gating who may create new employees.
+
+**Problem solved:** Day 35's `X-Organization-Id` only ever answered "which tenant." Nothing yet answered "is this specific caller, within that tenant, allowed to do this." Added an `EmployeeRole` (`Admin`/`Member`) per employee, scoped to that employee's own organization, and a first real rule: only an `Admin` may create new employees.
+
+**What I learned (via a live experiment, not assumption):** Tried `Forbid()` for the 403 response, matching StockPilot Day 25's `[Authorize(Roles = "Admin")]` mental model. It failed at runtime with a `500` (`System.InvalidOperationException: No authenticationScheme was specified, and there was no DefaultForbidScheme found`) — confirmed live that FieldOps's `Program.cs` has zero `AddAuthentication()` registration, so `Forbid()` (which delegates to ASP.NET Core's authentication middleware) has no scheme to hand off to. StockPilot's `Forbid()`-equivalent (`[Authorize(Roles=...)]`) only works because a real JWT bearer scheme is registered there. Reverted to the manual `StatusCode(StatusCodes.Status403Forbidden, ...)` already consistent with this controller's other hand-written header checks.
+
+**What I implemented:**
+* `EmployeeRole` enum (`Admin`/`Member`) added to `FieldOps.Modules.Employees`; `Employee`/`EmployeeSummary` gained a `Role`; `IEmployeeDirectory` gained `GetById(int)` and `Create(...)` now takes a `role`.
+* `InMemoryEmployeeDirectory` seeded for the first time ever (previously started empty): one Admin + one Member per organization (Ids 1-4, matching `InMemoryOrganizationDirectory`'s seeded Ids 1/2) — a deliberate fix for a real bootstrap problem (an "only Admins can create employees" rule with zero existing employees would permanently lock every organization out of ever getting a first employee).
+* `EmployeeApplicationService.CreateEmployee`: every employee created through the API now starts as `Member` (creating new Admins is out of today's scope).
+* `EmployeesController.Create`: added a mandatory `X-Employee-Id` header (same deliberate simplification class as `X-Organization-Id` — a plain, unverified, client-stated header, not real authentication), looks up that employee, and returns `403` if their role isn't `Admin`. `GetAll`/`Create`'s DTOs now also expose `Role`.
+* Existing tests updated for the new mandatory header and interface members (`FakeEmployeeDirectory.GetById`/`Create` signature; 3 integration tests given a valid `X-Employee-Id`; one renamed `Create_OrganizationHeader_ReturnsOk` → `Create_ByAdmin_ReturnsCreated` for accuracy).
+
+**Runtime flow:** Request → `X-Organization-Id` (which tenant) + `X-Employee-Id` (who, within that tenant) → `EmployeesController.Create` looks up the acting employee via `IEmployeeDirectory.GetById` → role checked before any cross-module orchestration runs → only then does `EmployeeApplicationService.CreateEmployee` (Day 34's organization-existence check) execute.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 7/7 (existing tests updated, no new ones added today — deliberately deferred to a later day, matching the day's own plan).
+* Live curl against a real running instance, 4 scenarios, all matching prediction exactly (no surprises, unlike Day 35): Admin creates → `201`; Member creates → `403`; nonexistent acting employee → `400`; missing `X-Employee-Id` → `400`.
+* Live experiment (see "What I learned"): `Forbid()` swapped in temporarily, triggered a real `500`, reverted immediately, 7/7 confirmed green again afterward.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `2c845ab`): all steps `success`.
+
+**Evidence:** A live-verified, concrete comparison between manual header-based authorization and ASP.NET Core's real authentication-middleware-backed authorization, including a genuine runtime failure caught by trying it rather than assuming; a real, honestly-identified bootstrap problem (RBAC + zero existing employees) solved via seeding, not glossed over; commit (`2c845ab`, pushed, CI green).
+
+**Mistakes or difficulties:** None new to the code itself — the `Forbid()` "mistake" was a deliberate, controlled experiment (predicted the failure mode correctly beforehand), not an accidental one.
+
+**Production considerations:** `X-Employee-Id` is the same class of deliberate simplification as Day 35's `X-Organization-Id` — a client-stated, unverified header. In production it would come from a verified identity (a JWT claim from the roadmap's not-yet-built Identity module). Also flagged, not fixed: `GetAll` (listing employees) has no role restriction at all today — deliberately left as a genuine, undecided product question rather than guessed at.
+
+**Understanding questions and answers:** Q1 (why the RBAC check runs before the organization-existence check, and what would go wrong reversed) was unknown, explained with a concrete scenario: reversing the order would let an unauthorized Member (or anyone with a stolen/guessed employee id) learn whether an arbitrary organization id exists at all via the error message, before ever being checked for permission — a real information-disclosure pattern, not just a style preference. Q2 (why seeding was newly required) answered correctly and precisely, unprompted: without at least one pre-existing Admin, no organization could ever get its first employee once creation was gated to Admins only. Q3 (why `StatusCode(403, ...)` instead of `Forbid()`) was unknown, then live-proven rather than merely explained (see above).
+
+**Independent task:** Decide whether `GetAll` should also be role-restricted (should a Member see their organization's full employee list, or should that be Admin-only too), with reasoning. Answered thoughtfully but non-committally — correctly identified this as a product/business decision rather than a purely technical one ("iş planına göre değişir"), which is itself a reasonable instinct; not implemented or tested. Noted back that today's actual code has already made an implicit choice (no restriction = everyone can see), and that defaulting to least-privilege when a requirement is genuinely undecided is the safer general practice — left open, not resolved, honestly.
+
+**Next session:** Phase 3, Week 8 continues — likely automated tests for today's RBAC rule (mirroring how Day 36 closed the same gap for Day 35's tenant isolation) and/or the still-open `GetAll` role-restriction question; exact topic to be decided at the start of the next session per the standing planning protocol.

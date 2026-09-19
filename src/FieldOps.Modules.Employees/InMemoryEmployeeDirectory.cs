@@ -15,9 +15,18 @@ internal class InMemoryEmployeeDirectory : IEmployeeDirectory
         new Employee("Org1 Admin", organizationId: 1, EmployeeRole.Admin) { Id = 1 },
         new Employee("Org1 Member", organizationId: 1, EmployeeRole.Member) { Id = 2 },
         new Employee("Org2 Admin", organizationId: 2, EmployeeRole.Admin) { Id = 3 },
-        new Employee("Org2 Member", organizationId: 2, EmployeeRole.Member) { Id = 4 }
+        new Employee("Org2 Member", organizationId: 2, EmployeeRole.Member) { Id = 4 },
+        // Day 38: models the referential-integrity gap ADR 0002 already
+        // flagged as unresolved (nothing keeps Employee.OrganizationId valid
+        // if its organization is later deleted) — an employee record
+        // pointing at an organization that doesn't actually exist. Needed so
+        // EmployeeApplicationService's "organization does not exist" branch
+        // stays reachable at the HTTP level once Day 38's own-organization
+        // check (correctly) runs before it: a real Admin can only ever
+        // trigger that branch if their OWN OrganizationId is the invalid one.
+        new Employee("Orphaned Admin", organizationId: 999, EmployeeRole.Admin) { Id = 5 }
     };
-    private int _nextId = 5;
+    private int _nextId = 6;
 
     public IReadOnlyList<EmployeeSummary> GetAll()
     {

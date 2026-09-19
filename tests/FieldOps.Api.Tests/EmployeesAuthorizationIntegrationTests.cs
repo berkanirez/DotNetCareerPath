@@ -61,11 +61,42 @@ public class EmployeesAuthorizationIntegrationTests : IClassFixture<WebApplicati
     }
 
     [Fact]
+    public async Task Create_ByMember_ReturnsForbidden()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        client.DefaultRequestHeaders.Add("X-Employee-Id", "2"); // seeded Org1 Member
+
+        var response = await client.PostAsJsonAsync("/api/employees", new { Name = "Should Never Exist" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    // Day 38: this is the exact exploit that was live-proven before the fix
+    // existed — Org 1's Admin (id=1) targeting Org 2 via X-Organization-Id.
+    // Role alone (Admin) was never enough; the acting employee's OWN
+    // organization must match the one they're trying to act within.
+    [Fact]
+    public async Task Create_ByAdminFromAnotherOrganization_ReturnsForbidden()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Organization-Id", "2");
+        client.DefaultRequestHeaders.Add("X-Employee-Id", "1"); // seeded Org1 Admin, targeting Org 2
+
+        var response = await client.PostAsJsonAsync("/api/employees", new { Name = "Cross-Org Injected Employee" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_NonExistentOrganization_ReturnsBadRequest()
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Organization-Id", "999");
-        client.DefaultRequestHeaders.Add("X-Employee-Id", "1"); // seeded Org1 Admin — isolates this test to the org-existence check only
+        // seeded "Orphaned Admin" (id=5) whose own OrganizationId is also 999 —
+        // needed since Day 38: an Admin whose own org doesn't match the
+        // target gets 403 before this org-existence check is ever reached.
+        client.DefaultRequestHeaders.Add("X-Employee-Id", "5");
 
         var response = await client.PostAsJsonAsync("/api/employees", new { Name = "Ghost Employee" });
 
