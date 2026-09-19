@@ -8,5 +8,6 @@ namespace FieldOps.Modules.Employees;
 public interface IEmployeeDirectory
 {
     IReadOnlyList<EmployeeSummary> GetAll();
-    EmployeeSummary Create(string name, int organizationId);
+    EmployeeSummary? GetById(int id);
+    EmployeeSummary Create(string name, int organizationId, EmployeeRole role);
 }

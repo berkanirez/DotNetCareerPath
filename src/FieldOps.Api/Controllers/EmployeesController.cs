@@ -40,20 +40,45 @@ public class EmployeesController : ControllerBase
 
         var employees = _employeeDirectory.GetAll()
             .Where(e => e.OrganizationId == organizationId)
-            .Select(e => new EmployeeDto(e.Id, e.Name, e.OrganizationId))
+            .Select(e => new EmployeeDto(e.Id, e.Name, e.OrganizationId, e.Role))
             .ToList();
 
         return Ok(employees);
     }
 
+    // Day 37: membership + a first granular RBAC rule. X-Organization-Id
+    // (Day 35) answers "which tenant" — it says nothing about whether the
+    // caller is allowed to create employees *within* that tenant. X-Employee-Id
+    // is today's equally deliberate, equally honest simplification for
+    // "who is calling": a plain, client-stated header, not a verified
+    // identity. Only an Admin-role employee (looked up by that id) may create
+    // new employees; a Member gets 403, matching StockPilot Day 25's
+    // Admin/Employee distinction, but scoped per-tenant instead of system-wide.
     [HttpPost]
     public ActionResult<EmployeeDto> Create(
         CreateEmployeeRequest request,
-        [FromHeader(Name = "X-Organization-Id")] int? organizationId)
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
     {
         if (organizationId is null)
         {
             return BadRequest("X-Organization-Id header is required.");
+        }
+
+        if (actingEmployeeId is null)
+        {
+            return BadRequest("X-Employee-Id header is required.");
+        }
+
+        var actingEmployee = _employeeDirectory.GetById(actingEmployeeId.Value);
+        if (actingEmployee is null)
+        {
+            return BadRequest($"Employee {actingEmployeeId} does not exist.");
+        }
+
+        if (actingEmployee.Role != EmployeeRole.Admin)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "Only an Admin can create employees.");
         }
 
         // The cross-module orchestration (does this organization exist? if
@@ -67,7 +92,7 @@ public class EmployeesController : ControllerBase
             return BadRequest(result.Error);
         }
 
-        var dto = new EmployeeDto(result.Employee!.Id, result.Employee.Name, result.Employee.OrganizationId);
+        var dto = new EmployeeDto(result.Employee!.Id, result.Employee.Name, result.Employee.OrganizationId, result.Employee.Role);
         // No single-employee GetById action exists yet (out of today's scope,
         // which is the cross-module orchestration, not full Employees CRUD),
         // so there's no correct target for a Location header via

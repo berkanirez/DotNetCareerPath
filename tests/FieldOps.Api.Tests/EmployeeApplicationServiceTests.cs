@@ -65,9 +65,11 @@ public class EmployeeApplicationServiceTests
 
         public IReadOnlyList<EmployeeSummary> GetAll() => _employees;
 
-        public EmployeeSummary Create(string name, int organizationId)
+        public EmployeeSummary? GetById(int id) => _employees.FirstOrDefault(e => e.Id == id);
+
+        public EmployeeSummary Create(string name, int organizationId, EmployeeRole role)
         {
-            var summary = new EmployeeSummary(_nextId++, name, organizationId);
+            var summary = new EmployeeSummary(_nextId++, name, organizationId, role);
             _employees.Add(summary);
             return summary;
         }

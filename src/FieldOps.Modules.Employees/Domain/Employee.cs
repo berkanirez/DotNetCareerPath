@@ -10,10 +10,12 @@ internal class Employee
     public int Id { get; set; }
     public string Name { get; set; }
     public int OrganizationId { get; set; }
+    public EmployeeRole Role { get; set; }
 
-    public Employee(string name, int organizationId)
+    public Employee(string name, int organizationId, EmployeeRole role)
     {
         Name = name;
         OrganizationId = organizationId;
+        Role = role;
     }
 }

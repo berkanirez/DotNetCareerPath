@@ -47,10 +47,11 @@ public class EmployeesAuthorizationIntegrationTests : IClassFixture<WebApplicati
     }
 
     [Fact]
-    public async Task Create_OrganizationHeader_ReturnsOk()
+    public async Task Create_ByAdmin_ReturnsCreated()
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        client.DefaultRequestHeaders.Add("X-Employee-Id", "1"); // seeded Org1 Admin
 
         var response = await client.PostAsJsonAsync("/api/employees", new { Name = "Should Never Exist" });
         var dto = await response.Content.ReadFromJsonAsync<EmployeeDto>();
@@ -64,6 +65,7 @@ public class EmployeesAuthorizationIntegrationTests : IClassFixture<WebApplicati
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Organization-Id", "999");
+        client.DefaultRequestHeaders.Add("X-Employee-Id", "1"); // seeded Org1 Admin — isolates this test to the org-existence check only
 
         var response = await client.PostAsJsonAsync("/api/employees", new { Name = "Ghost Employee" });
 
@@ -76,6 +78,7 @@ public class EmployeesAuthorizationIntegrationTests : IClassFixture<WebApplicati
         var uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
         var org1Client = _factory.CreateClient();
         org1Client.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1Client.DefaultRequestHeaders.Add("X-Employee-Id", "1"); // seeded Org1 Admin
         var org2Client = _factory.CreateClient();
         org2Client.DefaultRequestHeaders.Add("X-Organization-Id", "2");
 

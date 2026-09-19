@@ -30,7 +30,11 @@ public class EmployeeApplicationService
             return EmployeeCreationResult.Failure($"Organization {organizationId} does not exist.");
         }
 
-        var employee = _employeeDirectory.Create(name, organizationId);
+        // Every employee created through this API starts as a Member —
+        // creating a new Admin isn't supported yet (out of Day 37's scope).
+        // Today's seeded Admins (InMemoryEmployeeDirectory) are the only
+        // Admins that exist.
+        var employee = _employeeDirectory.Create(name, organizationId, EmployeeRole.Member);
         return EmployeeCreationResult.Success(employee);
     }
 }
