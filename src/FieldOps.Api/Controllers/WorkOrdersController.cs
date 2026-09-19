@@ -271,6 +271,39 @@ public class WorkOrdersController : ControllerBase
         return Ok(ToDto(updated));
     }
 
+    // Day 46: reuses ValidateOwnership (Day 42) unchanged — evidence is
+    // attached by the person doing the work, the same actor as Start/Complete,
+    // not the combined Admin-or-assignee rule Reassign/Unassign use. A real
+    // file/photo isn't stored (no upload infrastructure yet) — Note is a
+    // deliberate demo stand-in.
+    [HttpPost("{id}/evidence")]
+    public ActionResult<WorkOrderDto> AddEvidence(
+        int id,
+        AddEvidenceRequest request,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var ownershipError = ValidateOwnership(id, organizationId, actingEmployeeId, out _);
+        if (ownershipError is not null)
+        {
+            return ownershipError;
+        }
+
+        var updated = _workOrderDirectory.AddEvidence(id, request.Note);
+        if (updated is null)
+        {
+            return BadRequest($"Work order {id} must be assigned before evidence can be added.");
+        }
+
+        return Ok(ToDto(updated));
+    }
+
     // Day 43: extracted for Assign specifically. Day 44 moved Reassign onto
     // ValidateIsAdminOrAssignee below (a different, combined rule), so this
     // one now has a single caller again — kept as its own named method
@@ -363,7 +396,7 @@ public class WorkOrdersController : ControllerBase
     }
 
     private static WorkOrderDto ToDto(WorkOrderSummary workOrder) =>
-        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId);
+        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId, workOrder.EvidenceNotes);
 
     // Shared by both actions today — unlike EmployeesController (Day 39),
     // where the identical duplication between Create/GetAll was deliberately

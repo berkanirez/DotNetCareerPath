@@ -53,4 +53,11 @@ public interface IWorkOrderDirectory
     // original assignee is still on record and simply resumes; returns
     // null if the work order doesn't exist or isn't currently Completed.
     WorkOrderSummary? Reopen(int workOrderId);
+
+    // Day 46: "must not be Open" is the only state rule — nobody's doing
+    // anything yet if nobody's assigned, so there's nothing to attach
+    // evidence to. Every other status (Assigned/InProgress/Completed) is
+    // valid, unlike the other mutations which each need one exact prior
+    // state. Returns null if the work order doesn't exist or is still Open.
+    WorkOrderSummary? AddEvidence(int workOrderId, string note);
 }

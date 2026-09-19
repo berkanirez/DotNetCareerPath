@@ -105,6 +105,18 @@ internal class InMemoryWorkOrderDirectory : IWorkOrderDirectory
         return ToSummary(workOrder);
     }
 
+    public WorkOrderSummary? AddEvidence(int workOrderId, string note)
+    {
+        var workOrder = _workOrders.FirstOrDefault(w => w.Id == workOrderId);
+        if (workOrder is null || workOrder.Status == WorkOrderStatus.Open)
+        {
+            return null;
+        }
+
+        workOrder.EvidenceNotes.Add(note);
+        return ToSummary(workOrder);
+    }
+
     private static WorkOrderSummary ToSummary(WorkOrder workOrder) =>
-        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId);
+        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId, workOrder.EvidenceNotes.AsReadOnly());
 }

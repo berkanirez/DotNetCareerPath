@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 9 — in progress (Week 8 complete)
-* **Day:** 44 (complete)
+* **Day:** 45 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** FieldOps's first combined (OR-based) authorization rule: `Reassign` now allows an Admin OR the work order's current assignee (self-service handoff), while `Assign` (distributing brand-new work) stays Admin-only — a deliberate, distinct rule. Two real gaps found via independent code reading were resolved: a genuine no-op bug (reassigning to the already-assigned employee) was fixed and live-verified; a second suspected gap (an unrelated Member reassigning someone else's work order) was confirmed already prevented by the existing combined check, not a new fix.
+* **Status:** The Assign/Reassign/Unassign lifecycle triangle is complete, and `Reopen` (Completed → InProgress, Admin-only) was added from an independent-task follow-up. While writing `Reopen`, a real cross-tenant vulnerability was self-discovered and fixed the same session: its first version checked only the acting employee's role, never whether the target work order belonged to their organization at all — live-proven exploit (an Org 1 Admin reopening Org 2's completed work order), closed with a new `ValidateIsAdminForWorkOrder` check, before any test or external review caught it.
 * **Available study time:** 2 hours/day
-* **Progress:** ~39% (Day 44 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~40% (Day 45 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -347,6 +347,14 @@ This file reflects the actual current state of the learning journey. It must alw
 * Independent-task check #2 (suspected gap, found to already be handled): whether an unrelated Member could reassign someone else's work order — already prevented by `ValidateIsAdminOrAssignee`'s combined condition, already covered by `Reassign_ByUnrelatedMember_ReturnsForbidden` and existing live evidence; confirmed rather than re-fixed.
 * `docs/daily-code-notes/day-44.md` created (Turkish), including both independent-task findings.
 * Understanding questions: Q1 (why `Assign` stays Admin-only while `Reassign` allows the assignee) answered correctly, informally. Q2 (why the existing test broke) was unknown, explained in full. Q3 (why the combined check needs the work order but `ValidateIsAdmin` doesn't) got a one-word non-answer, explained.
+* `IWorkOrderDirectory.Unassign(workOrderId)` added — clears `AssignedEmployeeId`, returns to `Open`, requires `Assigned`/`InProgress`. `WorkOrdersController.Unassign` reuses `ValidateIsAdminOrAssignee` (Day 44) completely unchanged.
+* `IWorkOrderDirectory.Reopen(workOrderId)` added (independent-task follow-up) — requires `Completed`, returns to `InProgress`. `WorkOrdersController.Reopen` + new `ValidateIsAdminForWorkOrder` (Admin-only, fetches and org-checks the work order, no ownership branch — kept separate from `ValidateIsAdminOrAssignee` since genuinely not identical).
+* **Real, self-discovered cross-tenant vulnerability, found and fixed same session:** `Reopen`'s first version used `ValidateIsAdmin` alone, which never checks the target work order's organization. Live-proven exploit: an Org 1 Admin reopened Org 2's completed work order (`200`) just by naming its id. Root cause: `Assign`'s safety comes from `WorkOrderAssignmentService`'s downstream org check, a layer `Reopen` never goes through. Fixed with `ValidateIsAdminForWorkOrder`; live re-verified (exploit now `400`, legitimate same-org reopen still `200`).
+* 9 new integration tests (5 `Unassign`, 4 `Reopen`, including the exact cross-organization exploit as a permanent test).
+* Live Red→Green, twice: `Unassign`'s state check disabled → clean wrong `200` (not a crash, contrasting with Day 43's `500`, since the controller genuinely checks `if (updated is null)`); `Reopen`'s org check disabled → the exploit test genuinely failed → both restored → 42/42 green.
+* `docs/daily-code-notes/day-45.md` created (Turkish), including the self-caught vulnerability's full story.
+* Understanding questions: Q1 (why `Unassign` needs no service) answered correctly, unprompted. Q2 (why disabling `Unassign`'s check produced a clean `200` not a `500`) was unknown, explained — a real null-check vs. a null-forgiving `!`. Q3 (reusing `ValidateIsAdminOrAssignee` unchanged as a continuation of the extraction pattern) answered tersely but correctly.
+* Independent task (can a `Completed` work order be reopened, and should it be?): answered correctly by reading the code, unprompted — not currently possible, and it should be. Implemented same session; the cross-org bug above was found and fixed while building it, before shipping.
 
 ## Decisions on record
 
@@ -372,6 +380,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Continue Phase 3, Week 9, Day 45: likely unassignment, file evidence, or customer approval, building on Day 44's combined-authorization foundation. Exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Continue Phase 3, Week 9, Day 46: likely file evidence or customer approval — the two remaining Week 9 roadmap topics, building on the now-complete work-order lifecycle. Exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 

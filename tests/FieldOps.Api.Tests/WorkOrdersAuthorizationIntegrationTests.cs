@@ -617,7 +617,58 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<WebApplicat
         Assert.Equal(HttpStatusCode.BadRequest, reopenResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task AddEvidence_ByAssignee_Succeeds()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Needs-Evidence-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+
+        var evidenceResponse = await org1MemberClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/evidence", new { Note = "Replaced the filter, photo attached (simulated)." });
+        var updated = await evidenceResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, evidenceResponse.StatusCode);
+        Assert.Contains("Replaced the filter, photo attached (simulated).", updated!.EvidenceNotes);
+    }
+
+    [Fact]
+    public async Task AddEvidence_ByAdminWhoIsNotTheAssignee_ReturnsForbidden()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Admin-Cannot-Evidence-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var evidenceResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/evidence", new { Note = "Trying to add this as the Admin." });
+
+        Assert.Equal(HttpStatusCode.Forbidden, evidenceResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddEvidence_OnUnassignedWorkOrder_ReturnsForbidden()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+
+        var createResponse = await org1AdminClient.PostAsJsonAsync("/api/workorders", new { Title = $"Nothing-Happening-Yet-{Guid.NewGuid():N}" });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        // Nobody is assigned yet — the Admin who created it isn't "the
+        // assignee" of a null assignment, so this fails ownership (403)
+        // before the Open-state rule is ever reached, same class of
+        // ordering as Day 42's Start_OnUnassignedWorkOrder_ReturnsForbidden.
+        var evidenceResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{created!.Id}/evidence", new { Note = "Should never be added." });
+
+        Assert.Equal(HttpStatusCode.Forbidden, evidenceResponse.StatusCode);
+    }
+
     private record EmployeeDto(int Id, string Name, int OrganizationId, int Role);
 
-    private record WorkOrderDto(int Id, string Title, int OrganizationId, int Status, int? AssignedEmployeeId);
+    private record WorkOrderDto(int Id, string Title, int OrganizationId, int Status, int? AssignedEmployeeId, IReadOnlyList<string> EvidenceNotes);
 }

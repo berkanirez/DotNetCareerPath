@@ -12,6 +12,12 @@ internal class WorkOrder
     public WorkOrderStatus Status { get; set; }
     public int? AssignedEmployeeId { get; set; }
 
+    // Day 46: a plain text note stands in for real file evidence (a photo,
+    // a document) — no upload/storage infrastructure exists yet (that's
+    // Week 10-11's territory). A deliberate demo simplification, not a
+    // placeholder for something already half-built.
+    public List<string> EvidenceNotes { get; } = new();
+
     public WorkOrder(string title, int organizationId, WorkOrderStatus status)
     {
         Title = title;

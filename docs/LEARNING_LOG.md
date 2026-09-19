@@ -1681,3 +1681,40 @@ Copy this template for each new entry:
 **Independent task:** Two-part code-reading check (no running code): (1) can a caller reassign to the employee already assigned (a no-op)? (2) is there anywhere confirming a Member reassigning is actually the work order's own assignee? Part 1: correctly identified as a real, unguarded gap ("bu saçma olur değişmesi lazım") — fixed and live-verified same session. Part 2: raised as a concern but the protection was already present (`ValidateIsAdminOrAssignee`'s combined condition, already covered by `Reassign_ByUnrelatedMember_ReturnsForbidden` and a live curl step) — pointed back to the exact line and existing evidence rather than treated as a new bug.
 
 **Next session:** Phase 3, Week 9 continues — likely unassignment, file evidence, or customer approval; exact scope to be finalized at the start of the session.
+
+### 2026-09-19 — Phase 3, Week 9, Day 45
+
+**Topic:** Unassignment (completing the Assign → Reassign → Unassign triangle) plus, from an independent-task follow-up, Reopen — and a real, self-caught cross-tenant vulnerability found while writing Reopen's own code.
+
+**Problem solved:** Day 43 left a real gap: a work order could never return to `Open` with nobody assigned once past that state. Added `POST /api/workorders/{id}/unassign` (Admin or the current assignee — reuses Day 44's `ValidateIsAdminOrAssignee` completely unchanged, no new duplication at all). Then, from today's independent task ("should a Completed work order be reopenable?"), added `POST /api/workorders/{id}/reopen` (Completed → InProgress, deliberately Admin-only, not the combined rule — un-completing work is a higher-stakes correction than a handoff).
+
+**What I learned:** Two contrasting, concrete lessons about layered invariants, back to back. First: disabling `Unassign`'s state check (mirroring Day 43's Red-proof experiment) produced a clean wrong `200`, not a `500` — because `WorkOrdersController.Unassign` genuinely checks `if (updated is null)` rather than using a null-forgiving `!`, unlike Day 43's `WorkOrderAssignmentService`. Second, much more serious: while writing `Reopen`'s first version, it used `ValidateIsAdmin` — which checks only the acting employee's own role, never whether the target work order belongs to their organization at all. Live-proven exploit, self-discovered before any test caught it: an Org 1 Admin could reopen Org 2's completed work order just by naming its id. This happened because `Assign`'s cross-org safety comes from `WorkOrderAssignmentService`'s `ValidateWorkOrderAndEmployee`, a layer `Reopen` never goes through (no new employee to validate, so no service call at all) — the org check had nowhere to live unless explicitly added, and it wasn't, until caught.
+
+**What I implemented:**
+* `IWorkOrderDirectory.Unassign(workOrderId)` — clears `AssignedEmployeeId`, returns to `Open`, requires `Assigned`/`InProgress`.
+* `WorkOrdersController.Unassign` — reuses `ValidateIsAdminOrAssignee` verbatim.
+* `IWorkOrderDirectory.Reopen(workOrderId)` — requires `Completed`, returns to `InProgress` (not `Open`/`Assigned`, since the original assignee is still on record).
+* `WorkOrdersController.Reopen` + new `ValidateIsAdminForWorkOrder` (Admin-only, but — unlike `ValidateIsAdmin` — fetches the work order and checks its organization; kept separate from `ValidateIsAdminOrAssignee` since the two aren't identical, no ownership branch here).
+* 9 new integration tests total: 5 for `Unassign` (Admin, assignee, unrelated Member, `Open`-state rejection, `Completed`-state rejection), 4 for `Reopen` (Admin success, Member forbidden, non-`Completed` rejection, and the exact cross-organization exploit, permanently encoded).
+
+**Runtime flow:** `Unassign`: membership → `ValidateIsAdminOrAssignee` → module clears assignment. `Reopen`: membership → `ValidateIsAdminForWorkOrder` (work order fetched, org-checked, then role-checked) → module transitions `Completed` → `InProgress`.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 42/42 (33 existing + 5 Unassign + 4 Reopen).
+* Live curl, `Unassign`: assignee unassigns their own work order → `200`, `Open`, `assignedEmployeeId: null`; retry on already-`Open` → `400`.
+* Live curl, the actual exploit: Org 1's Admin reopening Org 2's completed work order → `200` (before the fix) → `400` "Work order 1 does not exist." (after) — re-verified that a legitimate same-organization reopen still succeeds.
+* Live Red→Green, twice: `Unassign`'s state check disabled → clean wrong `200`, not a crash (contrast with Day 43); `Reopen`'s org check disabled → `Reopen_ByAdminFromAnotherOrganization_ReturnsBadRequest` genuinely failed (`Expected: BadRequest, Actual: OK`) → restored → 42/42 green both times.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `21753b4`): pending confirmation this session.
+
+**Evidence:** A completed Assign/Reassign/Unassign/Reopen lifecycle; a real cross-tenant vulnerability introduced and caught within the same session, before any test or user found it, purely from applying this week's own "verify the org check exists" discipline while writing new code; a direct before/after contrast (Day 43's `500` vs. today's clean `400`) demonstrating that defensive null-checking genuinely changes failure severity, not just correctness; commit (`21753b4`, pushed).
+
+**Mistakes or difficulties:** The `Reopen` cross-org gap was a genuine mistake, not a staged demonstration — caught by applying the week's now-habitual "does this action check the work order's own organization" question to new code before considering it finished, not by a test or external review.
+
+**Production considerations:** No reason/note field for unassignment or reopening. `Reopen` always returns to `InProgress`, never re-triggers any downstream process a real system might need (e.g., re-notifying the assignee) — deferred, since Notifications isn't a built module yet.
+
+**Understanding questions and answers:** Q1 (why `Unassign` needs no `WorkOrderAssignmentService`) answered correctly and precisely, unprompted. Q2 (why disabling `Unassign`'s check produced a clean `200` instead of Day 43's `500`) was unknown, explained: the controller's `if (updated is null)` is a real check, not a null-forgiving `!` assumption. Q3 (whether reusing `ValidateIsAdminOrAssignee` unchanged continues Day 40/43's extraction pattern) answered tersely but correctly ("devamı").
+
+**Independent task:** Determine (by reading) whether a `Completed` work order can currently be reopened, and give an opinion. Answered correctly, unprompted: not currently possible, and it should be. Implemented same session as `Reopen` — during which the real cross-org bug above was found and fixed before being shipped.
+
+**Next session:** Phase 3, Week 9 — likely file evidence or customer approval, the two remaining roadmap topics for this week; exact scope to be finalized at the start of the session.
