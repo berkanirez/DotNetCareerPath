@@ -1502,3 +1502,38 @@ Copy this template for each new entry:
 **Independent task:** Decide (not "it depends") whether a Member should be able to view their own organization's full employee list. Berkan asked Claude to answer directly ("bilmiyorum sen cevap ver") — decided **yes**: today's DTO exposes nothing sensitive (name, id, org, role — comparable to an ordinary internal company directory), and Week 9's upcoming work-order assignment/scheduling features will very likely require a Member to see coworkers anyway, making an Admin-only restriction something that would likely need reverting almost immediately. This matches the code already written today (no role check on `GetAll`) — no further change needed unless Berkan disagrees.
 
 **Next session:** Phase 3 — Week 8 is fully closed. Next session begins Week 9 (work-order lifecycle, assignment, scheduling, status transitions, file evidence, customer approval, business-rule tests) per `docs/ROADMAP.md`; exact Day 40 scope to be finalized at the start of the session, per the standing planning protocol.
+
+### 2026-09-19 — Phase 3, Week 9, Day 40
+
+**Topic:** Week 9 begins — the Work Orders module's foundation, FieldOps's actual reason to exist (a job assigned to a field technician), applying Week 8's hard-won tenant-isolation/membership pattern from the start instead of retrofitting it after a live-found exploit.
+
+**Problem solved:** FieldOps had only "who belongs to what" (Organizations, Employees) so far, with no real business domain. Added a `WorkOrders` module (mirroring the `Organizations`/`Employees` internal-domain/public-DTO/module-DI pattern exactly, proving that pattern genuinely generalizes to a third module) with a minimal first vertical slice: create and list work orders, scoped by organization, with a fixed initial `Open` status (no transitions yet).
+
+**What I learned:** A concrete refinement of Day 39's "rule of three" discussion — `WorkOrdersController` extracted a shared `ValidateMembership` helper for `Create`/`GetAll` immediately, unlike `EmployeesController` (Day 39), which deliberately left the same three checks duplicated. The real distinguishing factor isn't a literal occurrence count; it's whether the duplicated logic is actually identical. `EmployeesController.Create`/`GetAll` differed (an extra role check on `Create`), so forcing them into one helper would have meant a half-abstraction; `WorkOrdersController.Create`/`GetAll`, written in the same file at the same time, need the exact same three checks with zero variance, which justifies extracting immediately rather than waiting for a third call site.
+
+**What I implemented:**
+* `FieldOps.Modules.WorkOrders` (new class library, added to `FieldOps.slnx`): `WorkOrder` (internal domain), `WorkOrderStatus` (public enum, only `Open` today), `WorkOrderSummary` (public DTO), `IWorkOrderDirectory` (`GetAll`, `Create` — deliberately not validating `organizationId`, same ADR 0002 reasoning as `IEmployeeDirectory`), `InMemoryWorkOrderDirectory` (internal, no seed data needed — no bootstrap problem here), `WorkOrdersModule.AddWorkOrdersModule()`.
+* `FieldOps.Api`: `WorkOrdersController` (`Create`/`GetAll`, both requiring `X-Organization-Id` + `X-Employee-Id` and verifying the acting employee's own organization matches the target — Week 8's Day 39 shape, correct from day one instead of found broken); `Models/WorkOrderDto.cs`, `CreateWorkOrderRequest.cs`; `Program.cs` registers the new module.
+* `tests/FieldOps.Api.Tests/WorkOrdersAuthorizationIntegrationTests.cs` (new, 4 tests): missing org header, missing employee header, cross-organization access, create-then-list tenant isolation.
+
+**Runtime flow:** Request → `X-Organization-Id` (target) + `X-Employee-Id` (who) → `ValidateMembership` (header presence, employee existence, organization match) → on success, `IWorkOrderDirectory` create/list, scoped to the target organization.
+
+**Verification:**
+* `dotnet build FieldOps.slnx` → 0 errors/warnings.
+* `dotnet test FieldOps.slnx` → 15/15 (11 existing + 4 new).
+* Live curl against a real running instance, 4 scenarios, all correct on the first try (no surprises, unlike Days 35/38/39, since the checks were designed in rather than discovered missing): no identity → `400`; legitimate create → `201` with `status: Open`; wrong-organization employee → `403`; legitimate list → `200` with the created work order.
+* Live Red→Green: the organization-match check commented out → `GetAll_ByEmployeeFromAnotherOrganization_ReturnsForbidden` genuinely failed (`Expected: Forbidden, Actual: OK`) → restored → 15/15 green again.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `907a96b`): all steps `success`.
+
+**Evidence:** A third module proving the modular-monolith boundary pattern (Day 32) genuinely generalizes, not a one-off; Week 8's security lessons applied proactively rather than reactively, with automated tests and a live Red→Green proof written alongside the feature instead of after an incident; a refined, concrete understanding of when duplicated logic is actually worth extracting; commit (`907a96b`, pushed, CI green).
+
+**Mistakes or difficulties:** None — the point of today was specifically to apply prior lessons correctly the first time, and live verification confirmed no gaps.
+
+**Production considerations:** Same simplification class as the rest of this week — in-memory storage, unverified header-based identity. `WorkOrderStatus` is deliberately a single-value enum today; assignment, status transitions, file evidence, and customer approval are all explicitly deferred to later in Week 9.
+
+**Understanding questions and answers:** Q1 (why extract a shared helper here but not in `EmployeesController`) answered correctly and precisely, unprompted: "tamamen aynı değillerdi EmployeesController'de, bunda aynılar." Q2 (why a single-value enum instead of a plain string for `WorkOrderStatus`) was unknown, explained: compile-time type safety (a typo like `"open"` vs `"Open"` is caught immediately with an enum, silently wrong with a string) and forward compatibility with Week 9's planned status transitions (a `switch` over an enum can warn about unhandled new values; a string cannot). Q3 (why the organization-membership check lives in the controller's `ValidateMembership`, not inside `IWorkOrderDirectory.Create`) was partially answered — correctly located *where* the check lives, but not *why* it couldn't live in the module; explained via ADR 0002: `FieldOps.Modules.WorkOrders` has no reference to `FieldOps.Modules.Employees` at all, so `IWorkOrderDirectory`'s own code has no way to even know an employee concept exists — only the host, which references both modules' interfaces, can perform a cross-module check.
+
+**Independent task:** Reflect (no code) on why tracking who created a work order would matter in a real field-service SaaS. Answered with a real but partially conflated instinct ("kimin oluşturduğu ileride statusu güncelleyebilmesi için falan önemli olabilirdi") — corrected: updating status will likely be the *assignee*'s job, not the *creator*'s, and Week 9's roadmap lists "assignment" as a distinct topic from creation; the creator's real value is more about accountability/traceability (the roadmap's separate, later "Audit Logs" module) and potential future authorization rules (e.g., only the creator or an Admin may cancel a work order they logged).
+
+**Next session:** Phase 3, Week 9 continues — likely work-order assignment to a specific employee and/or the first real status transition (`Open` → `Assigned`), building on today's foundation; exact scope to be finalized at the start of the session.

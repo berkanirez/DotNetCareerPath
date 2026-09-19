@@ -20,6 +20,7 @@ builder.Services.AddWorkOrdersModule();
 // Application-layer service: cross-module orchestration that belongs to the
 // host (Day 34), not inside either module or directly inside a controller.
 builder.Services.AddScoped<EmployeeApplicationService>();
+builder.Services.AddScoped<WorkOrderAssignmentService>();
 
 var app = builder.Build();
 

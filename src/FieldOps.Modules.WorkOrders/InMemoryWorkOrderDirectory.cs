@@ -18,6 +18,12 @@ internal class InMemoryWorkOrderDirectory : IWorkOrderDirectory
         return _workOrders.Select(ToSummary).ToList();
     }
 
+    public WorkOrderSummary? GetById(int id)
+    {
+        var workOrder = _workOrders.FirstOrDefault(w => w.Id == id);
+        return workOrder is null ? null : ToSummary(workOrder);
+    }
+
     public WorkOrderSummary Create(string title, int organizationId)
     {
         var workOrder = new WorkOrder(title, organizationId, WorkOrderStatus.Open) { Id = _nextId++ };
@@ -25,6 +31,19 @@ internal class InMemoryWorkOrderDirectory : IWorkOrderDirectory
         return ToSummary(workOrder);
     }
 
+    public WorkOrderSummary? Assign(int workOrderId, int employeeId)
+    {
+        var workOrder = _workOrders.FirstOrDefault(w => w.Id == workOrderId);
+        if (workOrder is null || workOrder.Status != WorkOrderStatus.Open)
+        {
+            return null;
+        }
+
+        workOrder.Status = WorkOrderStatus.Assigned;
+        workOrder.AssignedEmployeeId = employeeId;
+        return ToSummary(workOrder);
+    }
+
     private static WorkOrderSummary ToSummary(WorkOrder workOrder) =>
-        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status);
+        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId);
 }

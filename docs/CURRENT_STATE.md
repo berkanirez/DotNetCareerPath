@@ -6,12 +6,12 @@ This file reflects the actual current state of the learning journey. It must alw
 
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
-* **Week:** 8 — **complete**
-* **Day:** 39 (complete)
+* **Week:** 9 — in progress (Week 8 complete)
+* **Day:** 40 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** `GetAll`'s identity-less exposure (found via Day 38's independent task, live-confirmed) is closed: it now requires `X-Employee-Id` and rejects (`403`) a caller whose own organization doesn't match the one being queried, mirroring `Create`'s Day 38 fix. Deliberately left without a role restriction — resolved via today's independent task (a Member can see their own organization's full roster; no sensitive data is exposed, and Week 9's upcoming work-order assignment will likely require it). Week 8's full roadmap topic list (multi-tenancy, tenant identification, tenant isolation, membership, granular RBAC, authorization tests, cross-tenant attack scenarios) is now closed — all three real vulnerabilities found (Days 35, 38, 39) were genuinely discovered in this codebase's own code, not staged.
+* **Status:** Week 9 begins — `FieldOps.Modules.WorkOrders` added (mirroring the `Organizations`/`Employees` internal-domain/public-DTO/module-DI pattern), with a first vertical slice: create and list work orders, scoped by organization, fixed `Open` status (no transitions yet). Week 8's tenant-isolation/membership pattern (found only after three live exploits — Days 35, 38, 39) was applied correctly from the start this time, with automated tests and a live Red→Green proof written alongside the feature rather than after an incident.
 * **Available study time:** 2 hours/day
-* **Progress:** ~35% (Day 39 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~36% (Day 40 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -310,6 +310,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * Understanding questions: Q1 ("ürün kararı," why no role restriction on `GetAll`) answered correctly and tersely. Q2 ("rule of three") answered correctly in substance, confirmed and rephrased. Q3 (why the untouched cross-org test broke) was unknown, explained as the same mechanism as Day 38's Q1, applied to `GetAll`.
 * Independent task (decide, not "it depends," whether a Member should see their organization's full employee roster): Berkan asked Claude to answer directly. Decided **yes** — today's exposed data isn't sensitive, and Week 9's upcoming work-order assignment will likely require it anyway; matches the code already written (no role check needed).
 * **Week 8 is complete.** Days 35-39 covered the full roadmap topic list: multi-tenancy, tenant identification, tenant isolation (Day 35), membership and granular RBAC (Day 37), authorization tests (Day 36, 38, 39), and cross-tenant attack scenarios (Days 38-39, both genuinely discovered vulnerabilities, not staged).
+* **Week 9 begins.** `FieldOps.Modules.WorkOrders` added (new class library, added to `FieldOps.slnx`), mirroring `Organizations`/`Employees`'s internal-domain/public-DTO/module-DI pattern exactly: `WorkOrder` (internal), `WorkOrderStatus` (public enum, only `Open` today), `WorkOrderSummary`, `IWorkOrderDirectory` (no organization validation, same ADR 0002 reasoning), `InMemoryWorkOrderDirectory` (no seed data needed), `WorkOrdersModule.AddWorkOrdersModule()`.
+* `WorkOrdersController` (`Create`/`GetAll`) added — Week 8's tenant-isolation/membership checks (`X-Organization-Id` + `X-Employee-Id`, acting employee's own organization must match the target) applied correctly from day one via a shared `ValidateMembership` helper, rather than retrofitted after a live-found exploit.
+* `tests/FieldOps.Api.Tests/WorkOrdersAuthorizationIntegrationTests.cs` added (4 tests). Live Red→Green: organization-match check commented out → `GetAll_ByEmployeeFromAnotherOrganization_ReturnsForbidden` genuinely failed → restored → 15/15 green.
+* Live curl verification against a real running instance, 4 scenarios, all correct on the first try: no identity → `400`; legitimate create → `201` (`status: Open`); wrong-organization employee → `403`; legitimate list → `200`.
+* `docs/daily-code-notes/day-40.md` created (Turkish).
+* Understanding questions: Q1 (why `ValidateMembership` was extracted here but not in `EmployeesController`) answered correctly and precisely, unprompted — the two `EmployeesController` call sites weren't actually identical (an extra role check on `Create`), while `WorkOrdersController`'s two call sites are. Q2 (why a single-value enum instead of a string for `WorkOrderStatus`) was unknown, explained (compile-time type safety, forward compatibility with planned status transitions). Q3 (why the organization-membership check lives in the controller, not inside `IWorkOrderDirectory.Create`) correctly located *where* but not *why*; explained via ADR 0002 — the module has no reference to `FieldOps.Modules.Employees` at all, so only the host (which references both modules) can perform the cross-module check.
+* Independent task (reflect on why tracking a work order's creator matters, no code): answered with a real but partially conflated instinct (assumed the creator would update status later); corrected — status updates will likely be the *assignee*'s job (a distinct, later Week 9 topic), while the creator's value is more about accountability/traceability (a separate, later "Audit Logs" module) and potential future authorization rules.
 
 ## Decisions on record
 
@@ -335,6 +342,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 3, **Week 9** (work-order lifecycle, assignment, scheduling, status transitions, file evidence, customer approval, business-rule tests), Day 40: exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Continue Phase 3, Week 9, Day 41: likely work-order assignment to a specific employee and/or the first real status transition (`Open` → `Assigned`), building on Day 40's WorkOrders foundation. Exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 

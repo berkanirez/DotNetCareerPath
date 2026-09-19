@@ -10,6 +10,7 @@ internal class WorkOrder
     public string Title { get; set; }
     public int OrganizationId { get; set; }
     public WorkOrderStatus Status { get; set; }
+    public int? AssignedEmployeeId { get; set; }
 
     public WorkOrder(string title, int organizationId, WorkOrderStatus status)
     {

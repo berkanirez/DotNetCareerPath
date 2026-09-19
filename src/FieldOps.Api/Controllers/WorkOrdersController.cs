@@ -1,3 +1,4 @@
+using FieldOps.Api.Application;
 using FieldOps.Api.Models;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.WorkOrders;
@@ -18,11 +19,16 @@ public class WorkOrdersController : ControllerBase
 {
     private readonly IWorkOrderDirectory _workOrderDirectory;
     private readonly IEmployeeDirectory _employeeDirectory;
+    private readonly WorkOrderAssignmentService _workOrderAssignmentService;
 
-    public WorkOrdersController(IWorkOrderDirectory workOrderDirectory, IEmployeeDirectory employeeDirectory)
+    public WorkOrdersController(
+        IWorkOrderDirectory workOrderDirectory,
+        IEmployeeDirectory employeeDirectory,
+        WorkOrderAssignmentService workOrderAssignmentService)
     {
         _workOrderDirectory = workOrderDirectory;
         _employeeDirectory = employeeDirectory;
+        _workOrderAssignmentService = workOrderAssignmentService;
     }
 
     [HttpGet]
@@ -38,7 +44,7 @@ public class WorkOrdersController : ControllerBase
 
         var workOrders = _workOrderDirectory.GetAll()
             .Where(w => w.OrganizationId == organizationId)
-            .Select(w => new WorkOrderDto(w.Id, w.Title, w.OrganizationId, w.Status))
+            .Select(ToDto)
             .ToList();
 
         return Ok(workOrders);
@@ -57,9 +63,50 @@ public class WorkOrdersController : ControllerBase
         }
 
         var workOrder = _workOrderDirectory.Create(request.Title, organizationId!.Value);
-        var dto = new WorkOrderDto(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status);
+        var dto = ToDto(workOrder);
         return StatusCode(StatusCodes.Status201Created, dto);
     }
+
+    // Day 41: assignment is a state-changing action, not a read — unlike
+    // GetAll's still-open "should a Member see the roster" question (Day 39),
+    // "should any Member be able to assign any work order" isn't genuinely
+    // ambiguous, so this reuses Create's Day 37 Admin-only precedent directly.
+    [HttpPost("{id}/assign")]
+    public ActionResult<WorkOrderDto> Assign(
+        int id,
+        AssignWorkOrderRequest request,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        // ValidateMembership already looked this employee up once — looked
+        // up again here since only this one action needs the role, and
+        // adding an out-parameter to ValidateMembership purely for this
+        // single caller would complicate a helper the other two actions
+        // don't need changed. A real, negligible cost against an in-memory
+        // list; worth revisiting once a real database makes lookups non-free.
+        var actingEmployee = _employeeDirectory.GetById(actingEmployeeId!.Value)!;
+        if (actingEmployee.Role != EmployeeRole.Admin)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "Only an Admin can assign work orders.");
+        }
+
+        var result = _workOrderAssignmentService.AssignWorkOrder(id, request.EmployeeId, organizationId!.Value);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result.Error);
+        }
+
+        return Ok(ToDto(result.WorkOrder!));
+    }
+
+    private static WorkOrderDto ToDto(WorkOrderSummary workOrder) =>
+        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId);
 
     // Shared by both actions today — unlike EmployeesController (Day 39),
     // where the identical duplication between Create/GetAll was deliberately
