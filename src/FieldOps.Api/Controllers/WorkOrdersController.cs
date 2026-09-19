@@ -99,10 +99,14 @@ public class WorkOrdersController : ControllerBase
         return Ok(ToDto(result.WorkOrder!));
     }
 
-    // Day 43: reuses AssignWorkOrderRequest — identical shape (just an
+    // Day 44: reuses AssignWorkOrderRequest — identical shape (just an
     // EmployeeId), no reason for a separate ReassignWorkOrderRequest record.
-    // Admin-only, same precedent as Assign; the Assigned-or-InProgress
-    // precondition (not Open, not Completed) lives in the service.
+    // Unlike Assign (Admin-only — deciding who gets brand-new work stays a
+    // dispatcher decision), Reassign is FieldOps's first COMBINED
+    // authorization rule: an Admin, OR the employee this work order is
+    // currently assigned to, may hand it off — role (Day 37) OR ownership
+    // (Day 42), not just one category at a time. The Assigned-or-InProgress
+    // precondition (not Open, not Completed) still lives in the service.
     [HttpPost("{id}/reassign")]
     public ActionResult<WorkOrderDto> Reassign(
         int id,
@@ -116,10 +120,10 @@ public class WorkOrdersController : ControllerBase
             return membershipError;
         }
 
-        var adminError = ValidateIsAdmin(actingEmployeeId!.Value, "reassign");
-        if (adminError is not null)
+        var authError = ValidateIsAdminOrAssignee(id, organizationId, actingEmployeeId, "reassign");
+        if (authError is not null)
         {
-            return adminError;
+            return authError;
         }
 
         var result = _workOrderAssignmentService.ReassignWorkOrder(id, request.EmployeeId, organizationId!.Value);
@@ -191,23 +195,47 @@ public class WorkOrdersController : ControllerBase
         return Ok(ToDto(updated));
     }
 
-    // Day 43: extracted once Assign and Reassign both needed the EXACT same
-    // role check — unlike EmployeesController (Day 39), left duplicated
-    // because its two call sites genuinely differed, these two are
-    // byte-for-byte identical, so extracting immediately (not waiting for a
-    // third occurrence) matches Day 40's WorkOrdersController reasoning.
+    // Day 43: extracted for Assign specifically. Day 44 moved Reassign onto
+    // ValidateIsAdminOrAssignee below (a different, combined rule), so this
+    // one now has a single caller again — kept as its own named method
+    // anyway since "Assign is Admin-only" is a real, standalone business
+    // rule worth naming, not just inlined into Assign's action body.
     private ActionResult? ValidateIsAdmin(int actingEmployeeId, string action)
     {
         // ValidateMembership already looked this employee up once — looked
-        // up again here since only Assign/Reassign need the role, and
-        // adding an out-parameter to ValidateMembership purely for these
-        // two callers would complicate a helper GetAll/Create/Start/Complete
-        // don't need changed. A real, negligible cost against an in-memory
-        // list; worth revisiting once a real database makes lookups non-free.
+        // up again here since only Assign needs the role, and adding an
+        // out-parameter to ValidateMembership purely for this one caller
+        // would complicate a helper the other actions don't need changed.
+        // A real, negligible cost against an in-memory list; worth
+        // revisiting once a real database makes lookups non-free.
         var actingEmployee = _employeeDirectory.GetById(actingEmployeeId)!;
         if (actingEmployee.Role != EmployeeRole.Admin)
         {
             return StatusCode(StatusCodes.Status403Forbidden, $"Only an Admin can {action} work orders.");
+        }
+
+        return null;
+    }
+
+    // Day 44: FieldOps's first combined authorization check — role OR
+    // ownership, not just one category. Fetches the work order itself
+    // (unlike ValidateIsAdmin, which only needs the acting employee) since
+    // "are you the assignee" requires knowing who the assignee IS. Reuses
+    // Day 41's generic "does not exist" message for a missing/cross-org
+    // work order — the same information-hiding principle applied here too.
+    private ActionResult? ValidateIsAdminOrAssignee(int workOrderId, int? organizationId, int? actingEmployeeId, string action)
+    {
+        var actingEmployee = _employeeDirectory.GetById(actingEmployeeId!.Value)!;
+
+        var workOrder = _workOrderDirectory.GetById(workOrderId);
+        if (workOrder is null || workOrder.OrganizationId != organizationId)
+        {
+            return BadRequest($"Work order {workOrderId} does not exist.");
+        }
+
+        if (actingEmployee.Role != EmployeeRole.Admin && workOrder.AssignedEmployeeId != actingEmployeeId)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, $"Only an Admin or the assigned employee can {action} this work order.");
         }
 
         return null;

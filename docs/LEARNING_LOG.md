@@ -1611,3 +1611,38 @@ Copy this template for each new entry:
 **Independent task:** Determine, by reading (not running) the code, whether an Admin can currently reassign an already-assigned work order (e.g., if the assignee is on leave). Answered correctly, unprompted: no — `WorkOrderAssignmentService`'s `workOrder.Status != WorkOrderStatus.Open` check rejects any assignment attempt on a work order that isn't still `Open`, regardless of who attempts it or to whom, which Day 41's `Assign_AlreadyAssigned_ReturnsBadRequest` test already demonstrates. Flagged as a plausible future gap (no reassignment path exists yet), not fixed today.
 
 **Next session:** Phase 3, Week 9 continues — likely reassignment/unassignment rules, file evidence, or customer approval; exact scope to be finalized at the start of the session.
+
+### 2026-09-19 — Phase 3, Week 9, Day 43
+
+**Topic:** Reassignment — closing the real gap found via Day 42's independent task (a work order could never be reassigned once past `Open`).
+
+**Problem solved:** Added `POST /api/workorders/{id}/reassign`: an Admin changes who's assigned to a work order that's currently `Assigned` or `InProgress`, without resetting its `Status` — a genuine handoff (e.g., original assignee on leave), distinct from `Assign`'s `Open` → `Assigned` transition.
+
+**What I learned:** A live-caught, real defensive-programming lesson, found while doing today's own Red→Green proof (not assigned as a task, discovered mid-verification): disabling `WorkOrderAssignmentService`'s status precondition didn't degrade to a clean `400` the way it did for `AssignWorkOrder`'s equivalent check on Day 41 — it produced a genuine `500`. Root cause: `InMemoryWorkOrderDirectory.Reassign` still enforces its own state invariant and returns `null` for an invalid transition, but `ReassignWorkOrder`'s `WorkOrderAssignmentResult.Success(reassigned!)` used the null-forgiving `!` operator, trusting the service's own now-disabled check to have made a `null` result impossible. Two layers each assumed the other had already handled the case, and neither had. Restoring the check fixed it, but the near-miss is a concrete lesson: a module's own invariant should not be treated as a safety net for the host's logic, and the host's own check must not be treated as making a module's `null` return "impossible" — `!` overrides the compiler's nullability warning, not the actual runtime possibility.
+
+**What I implemented:**
+* `IWorkOrderDirectory.Reassign(workOrderId, newEmployeeId)` — module-owned invariant: requires `Assigned` or `InProgress`, changes `AssignedEmployeeId` only, never touches `Status`.
+* `WorkOrderAssignmentService`: extracted `ValidateWorkOrderAndEmployee` (shared by `AssignWorkOrder` and the new `ReassignWorkOrder` — this time genuinely identical between the two call sites, unlike Day 39's `EmployeesController`, so extracted immediately per Day 40's precedent) plus `ReassignWorkOrder` itself.
+* `WorkOrdersController.Reassign` (reuses `AssignWorkOrderRequest`, no new DTO needed) — extracted `ValidateIsAdmin` once `Assign` and `Reassign` needed the identical role check.
+* 6 new integration tests: reassign while `Assigned` (status unchanged), reassign while `InProgress` (status unchanged), reassign on `Open` rejected, reassign on `Completed` rejected, Member rejected, cross-organization target rejected.
+
+**Runtime flow:** Request → membership → Admin check → `ReassignWorkOrder`: work order/employee validated (Day 41's shared logic) → status must be `Assigned` or `InProgress` → `AssignedEmployeeId` updated, `Status` untouched.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 31/31 (25 existing + 6 new).
+* Live curl on a real running instance: assign → create a new employee → reassign while `Assigned` (status stays `1`) → reassign attempt on a never-assigned (`Open`) work order → `400` → Member attempt → `403`.
+* Live Red→Green, including the self-discovered `500`: the service's status check disabled → test failed with `InternalServerError`, not merely the wrong 2xx/4xx → restored → 31/31 green.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `f276d0e`): pending confirmation this session.
+
+**Evidence:** A concrete example of layered-invariant assumptions failing silently until tested, caught by disciplined Red→Green rather than assumed safe once code compiled; a second correctly-justified "extract immediately" decision (two genuinely identical call sites, both in the service and in the controller), contrasted explicitly with Day 39's correctly-justified non-extraction; commit (`f276d0e`, pushed).
+
+**Mistakes or difficulties:** The `500` during the Red→Green proof wasn't a pre-existing bug — the check being disabled was deliberate — but it's a genuine illustration of what would happen if the check were ever accidentally removed or forgotten, which is exactly why the "TEMPORARILY DISABLED" comment pattern this week's Red→Green proofs use is now doing real work: proving the check's actual necessity, not just its presence.
+
+**Production considerations:** No "unassign" (return to `Open`, clear the assignee entirely) exists — deliberately deferred, distinct from reassignment.
+
+**Understanding questions and answers:** Q1 (why extract the shared validation here but not in `EmployeesController` on Day 39) answered correctly and tersely: "birinde tamamen aynı kontroller diğerinde farklı kontrol vardı." Q2 (why the Red→Green proof produced a `500`) was unknown, explained in full (see "What I learned"). Q3 (why `Reassign` doesn't reset `Status`, what would be lost if it reset `InProgress` back to `Assigned`) needed a small refinement — Berkan's instinct ("we'd lose the work's current progress") was directionally right but imprecise, since `WorkOrderStatus` tracks no granular progress data at all today; the actual loss would be an accurate signal (the system would falsely report unstarted work as already underway having actually begun), relevant to future reporting/dashboards, not literal data loss.
+
+**Independent task:** Determine (by reading, not running) whether the current assignee can self-initiate a reassignment (e.g., "I can't do this, hand it to someone else"), and give an opinion on whether that should be possible. Answered correctly on both counts, unprompted: the code doesn't support it today (`ValidateIsAdmin` is unconditional), and it would be a good real-world feature to add. Noted forward: this would be FieldOps's first *combined* authorization rule (role OR ownership — Admin, or the current assignee), a genuinely new pattern distinct from Days 35/37/42's single-category checks, and a plausible topic for a later day.
+
+**Next session:** Phase 3, Week 9 continues — likely combined role-or-ownership authorization (self-service reassignment), unassignment, file evidence, or customer approval; exact scope to be finalized at the start of the session.

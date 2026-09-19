@@ -55,6 +55,15 @@ public class WorkOrderAssignmentService
             return WorkOrderAssignmentResult.Failure($"Work order {workOrderId} is not currently assigned or in progress, so it cannot be reassigned.");
         }
 
+        // Day 44 independent-task fix: "reassigning" a work order to the
+        // employee it's already assigned to is a meaningless no-op that
+        // nothing was rejecting — caught by Berkan reading the code, not
+        // found by any test.
+        if (newEmployeeId == workOrder.AssignedEmployeeId)
+        {
+            return WorkOrderAssignmentResult.Failure($"Work order {workOrderId} is already assigned to employee {newEmployeeId}.");
+        }
+
         var reassigned = _workOrderDirectory.Reassign(workOrderId, newEmployeeId);
         return WorkOrderAssignmentResult.Success(reassigned!);
     }

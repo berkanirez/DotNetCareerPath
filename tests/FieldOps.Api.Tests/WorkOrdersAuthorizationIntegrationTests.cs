@@ -373,21 +373,49 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<WebApplicat
         Assert.Equal(HttpStatusCode.BadRequest, reassignResponse.StatusCode);
     }
 
+    // Day 44: employee 2 (the seeded Org1 Member) is no longer a valid
+    // "any Member is blocked" example, since it's also this test's assignee
+    // and Day 44 made the assignee a legitimate actor for their OWN work
+    // order. A genuinely unrelated Member — neither Admin nor the assignee —
+    // is created fresh so this test still proves what it claims to.
     [Fact]
-    public async Task Reassign_ByMember_ReturnsForbidden()
+    public async Task Reassign_ByUnrelatedMember_ReturnsForbidden()
     {
         var org1AdminClient = _factory.CreateClient();
         org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
         org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
-        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Member-Cannot-Reassign-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Unrelated-Cannot-Reassign-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
 
-        var org1MemberClient = _factory.CreateClient();
-        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
-        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var unrelatedEmployeeId = await CreateOrg1EmployeeAsync(org1AdminClient, $"Bystander-{Guid.NewGuid():N}");
+        var unrelatedClient = _factory.CreateClient();
+        unrelatedClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        unrelatedClient.DefaultRequestHeaders.Add("X-Employee-Id", unrelatedEmployeeId.ToString());
 
-        var reassignResponse = await org1MemberClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = 2 });
+        var reassignResponse = await unrelatedClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = 2 });
 
         Assert.Equal(HttpStatusCode.Forbidden, reassignResponse.StatusCode);
+    }
+
+    // Day 44: the actual new capability — the current assignee (not an
+    // Admin) hands their own work order off to someone else.
+    [Fact]
+    public async Task Reassign_ByCurrentAssignee_Succeeds()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Self-Handoff-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+        var newEmployeeId = await CreateOrg1EmployeeAsync(org1AdminClient, $"Covering-{Guid.NewGuid():N}");
+
+        var assigneeClient = _factory.CreateClient();
+        assigneeClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        assigneeClient.DefaultRequestHeaders.Add("X-Employee-Id", "2"); // the assignee itself, not an Admin
+
+        var reassignResponse = await assigneeClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = newEmployeeId });
+        var reassigned = await reassignResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, reassignResponse.StatusCode);
+        Assert.Equal(newEmployeeId, reassigned!.AssignedEmployeeId);
     }
 
     [Fact]
@@ -399,6 +427,22 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<WebApplicat
         var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Cross-Org-Reassign-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
 
         var reassignResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = 4 }); // seeded Org2 Member
+
+        Assert.Equal(HttpStatusCode.BadRequest, reassignResponse.StatusCode);
+    }
+
+    // Day 44 independent-task fix: caught by Berkan reading the code, not
+    // by any test — "reassigning" to the same employee already assigned
+    // was a meaningless no-op that nothing rejected.
+    [Fact]
+    public async Task Reassign_ToSameEmployeeAlreadyAssigned_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"No-Op-Reassign-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var reassignResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = 2 });
 
         Assert.Equal(HttpStatusCode.BadRequest, reassignResponse.StatusCode);
     }

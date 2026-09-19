@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 9 — in progress (Week 8 complete)
-* **Day:** 42 (complete)
+* **Day:** 43 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** `Assigned → InProgress → Completed` transitions added (`POST /api/workorders/{id}/start`/`.../complete`), introducing a third authorization category alongside Day 35's tenant membership and Day 37's role: ownership — only the specific employee a work order was assigned to (not any Admin) may start or complete it. State-machine invariants stayed module-owned (`IWorkOrderDirectory.Start`/`Complete`); the ownership check lives in the host controller for architectural consistency with where role checks already live, not because it technically needs another module.
+* **Status:** Reassignment added (`POST /api/workorders/{id}/reassign`, Admin-only): an already-`Assigned`/`InProgress` work order can be handed to a different employee without resetting `Status`, closing the gap Day 42's independent task correctly identified. A live Red→Green proof exposed a real layered-invariant bug: disabling the service's own status check produced a genuine `500` (not just a wrong status), because a null-forgiving `!` assumed the module's own `null` return had become impossible — a concrete lesson on not treating another layer's check as a safety net.
 * **Available study time:** 2 hours/day
-* **Progress:** ~37% (Day 42 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~38% (Day 43 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -332,6 +332,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-42.md` created (Turkish).
 * Understanding questions: Q1 (why the ownership check lives in the controller) needed correction — Berkan conflated `Assign`'s real cross-module need with today's check, which has none; the placement is architectural-consistency, not necessity. Q2 (why an unassigned work order's `Start` returns `403` not `400`) was unknown, explained (`null` `AssignedEmployeeId` can never equal a real employee id, so ownership always fails first) — predicted correctly by Berkan while writing the test, then live-confirmed. Q3 (was the generic message reused or rewritten) answered correctly: rewritten, the two call sites live in different layers.
 * Independent task (can an Admin currently reassign an already-assigned work order?): answered correctly by reading the code alone, unprompted — no, `WorkOrderAssignmentService`'s `Status != Open` check blocks any reassignment regardless of actor, already demonstrated by Day 41's `Assign_AlreadyAssigned_ReturnsBadRequest` test. Flagged as a plausible future gap, not fixed today.
+* `IWorkOrderDirectory.Reassign(workOrderId, newEmployeeId)` added — changes `AssignedEmployeeId` only while `Assigned`/`InProgress`, never touches `Status` (distinct from `Assign`'s `Open`→`Assigned` transition).
+* `WorkOrderAssignmentService`: extracted `ValidateWorkOrderAndEmployee` (shared, genuinely identical, by `AssignWorkOrder` and the new `ReassignWorkOrder` — extracted immediately per Day 40's precedent, contrasted explicitly with Day 39's correctly-justified non-extraction). `WorkOrdersController.Reassign` added (reuses `AssignWorkOrderRequest`); `ValidateIsAdmin` extracted once `Assign`/`Reassign` needed the identical role check.
+* 6 new integration tests added. Live Red→Green surfaced a real layered-invariant bug, not staged: disabling the service's own status check produced a genuine `500` (`NullReferenceException`), not merely a wrong status — `InMemoryWorkOrderDirectory.Reassign` still returned `null` for an invalid transition, but the service's `Success(reassigned!)` used the null-forgiving `!` operator, trusting its own (now-disabled) check to have made that impossible. Restored, re-verified: 31/31 green.
+* Live curl verification, full scenario on a real running instance: assign → create a new employee → reassign while `Assigned` (status unchanged) → reassign on a never-assigned work order (`400`) → Member attempt (`403`).
+* `docs/daily-code-notes/day-43.md` created (Turkish), including the layered-invariant bug story.
+* Understanding questions: Q1 (extraction rationale) answered correctly and tersely. Q2 (why the Red→Green proof produced a `500`) was unknown, explained in full. Q3 (why `Reassign` doesn't reset `Status`) needed a small refinement — Berkan's "we'd lose progress" instinct was directionally right but imprecise, since no granular progress data exists today; the real loss would be an accurate signal for future reporting.
+* Independent task (can the current assignee self-initiate reassignment, and should they be able to?): answered correctly on both counts by reading the code alone, unprompted — not supported today, and a good real-world feature to add. Noted as FieldOps's first plausible *combined* authorization rule (role OR ownership), a new pattern distinct from this week's single-category checks.
 
 ## Decisions on record
 
@@ -357,6 +364,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Continue Phase 3, Week 9, Day 43: likely reassignment/unassignment rules, file evidence, or customer approval, building on Day 42's status-transition foundation. Exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Continue Phase 3, Week 9, Day 44: likely combined role-or-ownership authorization (self-service reassignment by the current assignee), unassignment, file evidence, or customer approval. Exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
