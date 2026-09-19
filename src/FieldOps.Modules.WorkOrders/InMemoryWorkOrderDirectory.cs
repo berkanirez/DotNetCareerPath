@@ -44,6 +44,30 @@ internal class InMemoryWorkOrderDirectory : IWorkOrderDirectory
         return ToSummary(workOrder);
     }
 
+    public WorkOrderSummary? Start(int workOrderId)
+    {
+        var workOrder = _workOrders.FirstOrDefault(w => w.Id == workOrderId);
+        if (workOrder is null || workOrder.Status != WorkOrderStatus.Assigned)
+        {
+            return null;
+        }
+
+        workOrder.Status = WorkOrderStatus.InProgress;
+        return ToSummary(workOrder);
+    }
+
+    public WorkOrderSummary? Complete(int workOrderId)
+    {
+        var workOrder = _workOrders.FirstOrDefault(w => w.Id == workOrderId);
+        if (workOrder is null || workOrder.Status != WorkOrderStatus.InProgress)
+        {
+            return null;
+        }
+
+        workOrder.Status = WorkOrderStatus.Completed;
+        return ToSummary(workOrder);
+    }
+
     private static WorkOrderSummary ToSummary(WorkOrder workOrder) =>
         new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId);
 }

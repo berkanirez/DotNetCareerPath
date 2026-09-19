@@ -105,6 +105,87 @@ public class WorkOrdersController : ControllerBase
         return Ok(ToDto(result.WorkOrder!));
     }
 
+    // Day 42: ownership-based authorization — a third kind alongside Day 35's
+    // tenant membership and Day 37's role. "Is the caller the specific
+    // employee this work order was assigned to" isn't a group fact (any org
+    // member, any Admin); it's a fact about this ONE record, so it's checked
+    // here in the controller, not inside the module, using AssignedEmployeeId
+    // — a field the module already exposes, no cross-module lookup needed.
+    [HttpPost("{id}/start")]
+    public ActionResult<WorkOrderDto> Start(
+        int id,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var ownershipError = ValidateOwnership(id, organizationId, actingEmployeeId, out _);
+        if (ownershipError is not null)
+        {
+            return ownershipError;
+        }
+
+        var updated = _workOrderDirectory.Start(id);
+        if (updated is null)
+        {
+            return BadRequest($"Work order {id} must be Assigned before it can be started.");
+        }
+
+        return Ok(ToDto(updated));
+    }
+
+    [HttpPost("{id}/complete")]
+    public ActionResult<WorkOrderDto> Complete(
+        int id,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var ownershipError = ValidateOwnership(id, organizationId, actingEmployeeId, out _);
+        if (ownershipError is not null)
+        {
+            return ownershipError;
+        }
+
+        var updated = _workOrderDirectory.Complete(id);
+        if (updated is null)
+        {
+            return BadRequest($"Work order {id} must be InProgress before it can be completed.");
+        }
+
+        return Ok(ToDto(updated));
+    }
+
+    // Shared by Start/Complete — same "does this work order genuinely exist,
+    // for me" generic-message pattern as Day 41's Assign (a work order that
+    // doesn't exist and one belonging to another organization are
+    // indistinguishable), plus the new ownership check.
+    private ActionResult? ValidateOwnership(int workOrderId, int? organizationId, int? actingEmployeeId, out WorkOrderSummary? workOrder)
+    {
+        workOrder = _workOrderDirectory.GetById(workOrderId);
+        if (workOrder is null || workOrder.OrganizationId != organizationId)
+        {
+            workOrder = null;
+            return BadRequest($"Work order {workOrderId} does not exist.");
+        }
+
+        if (workOrder.AssignedEmployeeId != actingEmployeeId)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "Only the assigned employee can act on this work order.");
+        }
+
+        return null;
+    }
+
     private static WorkOrderDto ToDto(WorkOrderSummary workOrder) =>
         new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId);
 

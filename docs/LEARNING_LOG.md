@@ -1537,3 +1537,42 @@ Copy this template for each new entry:
 **Independent task:** Reflect (no code) on why tracking who created a work order would matter in a real field-service SaaS. Answered with a real but partially conflated instinct ("kimin oluşturduğu ileride statusu güncelleyebilmesi için falan önemli olabilirdi") — corrected: updating status will likely be the *assignee*'s job, not the *creator*'s, and Week 9's roadmap lists "assignment" as a distinct topic from creation; the creator's real value is more about accountability/traceability (the roadmap's separate, later "Audit Logs" module) and potential future authorization rules (e.g., only the creator or an Admin may cancel a work order they logged).
 
 **Next session:** Phase 3, Week 9 continues — likely work-order assignment to a specific employee and/or the first real status transition (`Open` → `Assigned`), building on today's foundation; exact scope to be finalized at the start of the session.
+
+### 2026-09-19 — Phase 3, Week 9, Day 41
+
+**Topic:** Work-order assignment and the first real status transition (`Open` → `Assigned`), plus a genuine information-disclosure inconsistency found and fixed via today's independent task.
+
+**Problem solved:** Work orders could be created and listed (Day 40) but nothing could actually happen to one. Added `POST /api/workorders/{id}/assign`: an Admin assigns a work order to an employee within the same organization, transitioning it from `Open` to `Assigned`.
+
+**What I learned:** A concrete refinement of where domain rules belong: "a work order can only be assigned while `Open`" is a fact purely about a `WorkOrder`'s own state, so `InMemoryWorkOrderDirectory.Assign` enforces it itself (a module protecting its own invariant, not trusting the host to remember); "the assignee must belong to the work order's own organization" needs `IEmployeeDirectory`, which the module has no reference to, so that lives in the host's `WorkOrderAssignmentService` — the same module/host split ADR 0002 established, now applied to a mutation instead of just a read. Also: a live Red→Green attempt exposed a real bug in a *test*, not the code — `Assign_WorkOrderFromAnotherOrganization_ReturnsBadRequest` stayed green even with the organization-match check disabled, because the test's chosen `employeeId` (an Org 2 employee) tripped a *different*, unrelated check and produced the same `400` by coincidence. Fixed by targeting an employee who genuinely belongs to the work order's own organization, which only fails if the actual check under test is doing the work.
+
+**What I implemented:**
+* `WorkOrderStatus` gained `Assigned`; `WorkOrder`/`WorkOrderSummary` gained nullable `AssignedEmployeeId`.
+* `IWorkOrderDirectory.Assign(workOrderId, employeeId)`: returns null if the work order doesn't exist or isn't `Open` (module-owned invariant); `GetById` added.
+* `WorkOrderAssignmentResult` (Success/Failure factory, mirroring Day 34's `EmployeeCreationResult`) and `WorkOrderAssignmentService` (host, coordinating `IWorkOrderDirectory` + `IEmployeeDirectory`) — justified by the same real-coordination-plus-real-rule test Day 34 used, not extracted mechanically.
+* Applied Day 37/38's information-disclosure lesson proactively: a work order that doesn't exist and one that belongs to a different organization return the identical `"Work order {id} does not exist."` message.
+* `WorkOrdersController.Assign`: Admin-only (reusing Day 37's precedent directly — unlike `GetAll`'s genuinely ambiguous viewing question, "should any Member assign any work order" isn't ambiguous), delegates to the service.
+* 5 new integration tests (`Assign_ByAdmin_TransitionsToAssigned`, `Assign_ByMember_ReturnsForbidden`, `Assign_AlreadyAssigned_ReturnsBadRequest`, `Assign_ToEmployeeFromAnotherOrganization_ReturnsBadRequest`, `Assign_WorkOrderFromAnotherOrganization_ReturnsBadRequest`).
+* **Independent-task fix:** the employee-lookup branch (`"does not exist"` vs `"is not part of this organization"`) was inconsistent with the work-order branch's information-hiding — fixed to return the identical generic message for both a genuinely missing employee and one that exists but belongs to a different organization, closing the same class of cross-tenant id-probing leak Day 37/38 closed for organization ids, now also closed for employee ids reached through this endpoint.
+
+**Runtime flow:** Request → membership check → Admin-role check → `WorkOrderAssignmentService.AssignWorkOrder`: work order exists and belongs to caller's org (else generic "does not exist") → employee exists and belongs to the same org (else generic "does not exist," now consistently) → work order is `Open` (else "not open for assignment") → `IWorkOrderDirectory.Assign` mutates state.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 20/20 (15 existing + 5 new), unaffected by the later message-consistency fix (tests assert status codes, not exact text).
+* Live curl, 5 scenarios via a real running instance, all correct: legitimate assign → `200` (`status: Assigned`, `assignedEmployeeId` set); re-assigning an already-`Assigned` work order → `400`; cross-org work order target → `400` with the generic message; cross-org assignee → `400`; a Member attempting to assign → `403`.
+* Live Red→Green, including the self-caught test bug described above: first attempt stayed green incorrectly; fixed test then genuinely failed with the check disabled (`Expected: BadRequest, Actual: OK`); restored → 20/20 green.
+* Post-independent-task fix, live-reverified: a missing employee id and a real employee from another organization now produce byte-for-byte the same `400` message.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `7e263ad`, covering the assignment feature): all steps `success`.
+
+**Evidence:** A second host-level application service (`WorkOrderAssignmentService`) proving Day 34's extraction criterion generalizes; a real, self-caught test-quality bug (a test that passed for the wrong reason) caught before being trusted; a genuine, independently-found information-disclosure inconsistency, fixed same-day with live before/after proof; commit (`7e263ad`, pushed, CI green) plus a follow-up fix pending commit.
+
+**Mistakes or difficulties:** The first version of `Assign_WorkOrderFromAnotherOrganization_ReturnsBadRequest` was a real, self-caught mistake — it validated nothing about the check it was meant to prove, passing "by accident" via an unrelated code path. Caught only because Red→Green discipline is now a standing habit, not skipped once the feature "looked done."
+
+**Production considerations:** Same simplification class as the rest of this week — in-memory storage, unverified header-based identity. Unassignment, reassignment, and `InProgress`/`Completed` transitions are explicitly out of scope, deferred to later in Week 9.
+
+**Understanding questions and answers:** Q1 (why the `Open`-only rule lives in the module but the organization-match rule lives in the host) answered correctly and precisely, unprompted. Q2 (the test-bug story) needed a full re-explanation after an initial "bilmiyorum." Q3 (why `Assign` is unambiguously Admin-only while `GetAll`'s viewing rights were left an open question) answered correctly and concisely: "birinde sadece hassas olmayan veri okunuyordu diğerinde ise direkt veri oluşturulabiliyordu" (one is a read of non-sensitive data, the other is a real state-changing action).
+
+**Independent task:** Decide whether the employee-lookup's two distinguishable failure messages were a justified difference or an inconsistency with the work-order check's information-hiding. Berkan couldn't resolve it and asked Claude to answer ("bilemedim cevap ne") — assessed as a genuine inconsistency (the same cross-tenant id-probing risk applies to employee ids, not just organization/work-order ids) and, at Berkan's explicit follow-up request ("şimdi düzelt"), fixed and live-verified the same session.
+
+**Next session:** Phase 3, Week 9 continues — likely `InProgress`/`Completed` transitions, unassignment/reassignment rules, or file evidence; exact scope to be finalized at the start of the session.

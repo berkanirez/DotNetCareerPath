@@ -35,15 +35,18 @@ public class WorkOrderAssignmentService
             return WorkOrderAssignmentResult.Failure($"Work order {workOrderId} does not exist.");
         }
 
+        // Same information-hiding principle as the work order check above,
+        // now applied consistently: a genuinely missing employee and one
+        // that exists but belongs to a different organization are
+        // indistinguishable to the caller. Without this, an Admin could
+        // probe arbitrary employeeId values via this endpoint to discover
+        // which ids exist somewhere in the system, even outside their own
+        // organization — the exact same class of leak Day 37/38 closed for
+        // organization ids, just reachable through a different field.
         var employee = _employeeDirectory.GetById(employeeId);
-        if (employee is null)
+        if (employee is null || employee.OrganizationId != workOrder.OrganizationId)
         {
             return WorkOrderAssignmentResult.Failure($"Employee {employeeId} does not exist.");
-        }
-
-        if (employee.OrganizationId != workOrder.OrganizationId)
-        {
-            return WorkOrderAssignmentResult.Failure($"Employee {employeeId} is not part of this organization.");
         }
 
         if (workOrder.Status != WorkOrderStatus.Open)

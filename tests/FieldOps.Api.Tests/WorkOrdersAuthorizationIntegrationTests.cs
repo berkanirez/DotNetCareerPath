@@ -179,5 +179,115 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<WebApplicat
         Assert.Equal(HttpStatusCode.BadRequest, assignResponse.StatusCode);
     }
 
+    // Day 42: ownership-based authorization — a work order created and
+    // assigned by Org1's Admin (id=1) to Org1's Member (id=2); only that
+    // Member, not even the Admin who assigned it, may start/complete it.
+    private async Task<WorkOrderDto> CreateAndAssignWorkOrderAsync(HttpClient adminClient, string title, int assigneeEmployeeId)
+    {
+        var createResponse = await adminClient.PostAsJsonAsync("/api/workorders", new { Title = title });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        var assignResponse = await adminClient.PostAsJsonAsync($"/api/workorders/{created!.Id}/assign", new { EmployeeId = assigneeEmployeeId });
+        return (await assignResponse.Content.ReadFromJsonAsync<WorkOrderDto>())!;
+    }
+
+    [Fact]
+    public async Task Start_ByAssignedEmployee_TransitionsToInProgress()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Start-Me-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2"); // the assignee
+
+        var startResponse = await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/start", null);
+        var started = await startResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, startResponse.StatusCode);
+        Assert.Equal(2, started!.Status); // WorkOrderStatus.InProgress == 2
+    }
+
+    [Fact]
+    public async Task Start_ByAdminWhoIsNotTheAssignee_ReturnsForbidden()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Admin-Cannot-Start-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        // The Admin assigned this work order but wasn't assigned it
+        // themselves — ownership, not role, decides who may start it.
+        var startResponse = await org1AdminClient.PostAsync($"/api/workorders/{assigned.Id}/start", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, startResponse.StatusCode);
+    }
+
+    // Named ReturnsForbidden, not ReturnsBadRequest: the ownership check
+    // (AssignedEmployeeId != actingEmployeeId) runs BEFORE the state check,
+    // and a null AssignedEmployeeId can never equal a real employee id — so
+    // an unassigned work order always fails ownership first, no matter who
+    // asks. The "must be Assigned to start" state-invariant path is
+    // therefore unreachable for a genuinely unassigned work order; it only
+    // ever fires for one that's already past Assigned (e.g. already
+    // InProgress), which Day 43+ may want a dedicated test for.
+    [Fact]
+    public async Task Start_OnUnassignedWorkOrder_ReturnsForbidden()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+
+        var createResponse = await org1AdminClient.PostAsJsonAsync("/api/workorders", new { Title = $"Still-Open-{Guid.NewGuid():N}" });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        // Nobody is assigned yet, so AssignedEmployeeId is null — even the
+        // Admin who created it isn't "the assignee" of a null assignment.
+        var startResponse = await org1AdminClient.PostAsync($"/api/workorders/{created!.Id}/start", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, startResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Complete_ByAssignedEmployee_TransitionsToCompleted()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Complete-Me-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+
+        await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/start", null);
+        var completeResponse = await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/complete", null);
+        var completed = await completeResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+        Assert.Equal(3, completed!.Status); // WorkOrderStatus.Completed == 3
+    }
+
+    [Fact]
+    public async Task Complete_BeforeStart_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Skip-Start-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+
+        // Still Assigned, never started — completing straight from Assigned
+        // skips a lifecycle step and must be rejected.
+        var completeResponse = await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/complete", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, completeResponse.StatusCode);
+    }
+
     private record WorkOrderDto(int Id, string Title, int OrganizationId, int Status, int? AssignedEmployeeId);
 }

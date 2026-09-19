@@ -20,4 +20,16 @@ public interface IWorkOrderDirectory
     // rather than trusting the host to remember. Returns null if no work
     // order with this id exists, or if it isn't currently Open.
     WorkOrderSummary? Assign(int workOrderId, int employeeId);
+
+    // Day 42: neither of these takes an employeeId. Unlike Assign (a
+    // cross-module fact — is this employee real, is it in the right
+    // organization), "is the caller the one this work order was assigned
+    // to" only needs a WorkOrder's own AssignedEmployeeId field — the host
+    // (WorkOrdersController) checks that itself before calling here, the
+    // same place Day 37's role checks live. This module only enforces its
+    // own state-machine invariant: Start requires Assigned, Complete
+    // requires InProgress. Returns null if the work order doesn't exist or
+    // isn't in the required prior state.
+    WorkOrderSummary? Start(int workOrderId);
+    WorkOrderSummary? Complete(int workOrderId);
 }

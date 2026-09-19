@@ -133,6 +133,31 @@ dotnet build RoadmapOS.slnx  → 0 Hata, 0 Uyarı
 
 ---
 
+## 8. Bağımsız görev sonrası düzeltme — tutarsız bir bilgi sızıntısı
+
+Bağımsız görev şu soruyu sordu: `WorkOrderAssignmentResult`'ın mesajlarına bak — iş emri için "yok" ile "başka organizasyona ait" **aynı** mesajı kullanıyoruz, ama çalışan için **farklı** mesajlar kullanıyorduk (`"does not exist"` vs `"is not part of this organization"`). Bu bir tutarsızlıktı.
+
+**Neden gerçek bir sorun:** Day 37/38'in dersi, "yok" ile "var ama seninle ilgisi yok" arasındaki farkı **hiçbir zaman** yetkisiz/ilgisiz bir tarafa sızdırmamaktı — çünkü bu fark, başka tenant'ların ID'lerini yoklamak için kullanılabilir. Bu prensip organizasyon ID'leri için ne kadar geçerliyse, çalışan ID'leri için de aynı derecede geçerli: eski koddaki ayrım, bir Org1 Admin'inin `Assign` uç noktasına farklı `employeeId` değerleri deneyerek, "sistemde hangi çalışan ID'leri var (kendi organizasyonunda olmasa bile)" bilgisini toplamasına izin veriyordu.
+
+**Düzeltme:**
+```csharp
+var employee = _employeeDirectory.GetById(employeeId);
+if (employee is null || employee.OrganizationId != workOrder.OrganizationId)
+{
+    return WorkOrderAssignmentResult.Failure($"Employee {employeeId} does not exist.");
+}
+```
+
+**Canlı kanıt (önce/sonra):**
+```
+Var olmayan calisan (999)                    → "Employee 999 does not exist."
+Var olan ama baska organizasyondan (id=4)    → "Employee 4 does not exist."   ← artik ayni mesaj
+```
+
+`dotnet test FieldOps.slnx` → 20/20 (testler status koduna bakıyor, mesaj içeriğine değil — davranış değişikliği hiçbir testi bozmadı, çünkü ikisi de zaten `400` bekliyordu).
+
+---
+
 ## Bugünün bilinçli sınırı
 
 Geri alma (unassign), yeniden atama, `InProgress`/`Completed` geçişleri bugünün kapsamı dışında — Week 9'un ilerleyen günlerine bırakıldı.

@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 9 — in progress (Week 8 complete)
-* **Day:** 40 (complete)
+* **Day:** 41 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** Week 9 begins — `FieldOps.Modules.WorkOrders` added (mirroring the `Organizations`/`Employees` internal-domain/public-DTO/module-DI pattern), with a first vertical slice: create and list work orders, scoped by organization, fixed `Open` status (no transitions yet). Week 8's tenant-isolation/membership pattern (found only after three live exploits — Days 35, 38, 39) was applied correctly from the start this time, with automated tests and a live Red→Green proof written alongside the feature rather than after an incident.
+* **Status:** Work-order assignment added (`POST /api/workorders/{id}/assign`, Admin-only): the first real status transition, `Open` → `Assigned`, coordinated by a new host-level `WorkOrderAssignmentService` (same justification as Day 34's `EmployeeApplicationService`). A self-caught test bug (a test that passed for the wrong reason) was found and fixed during the live Red→Green step. A genuine information-disclosure inconsistency (employee lookup distinguishing "doesn't exist" from "wrong organization," unlike the work-order check) was found via the independent task and fixed same-session, applying Day 37/38's lesson consistently.
 * **Available study time:** 2 hours/day
-* **Progress:** ~36% (Day 40 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~36% (Day 41 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -317,6 +317,14 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-40.md` created (Turkish).
 * Understanding questions: Q1 (why `ValidateMembership` was extracted here but not in `EmployeesController`) answered correctly and precisely, unprompted — the two `EmployeesController` call sites weren't actually identical (an extra role check on `Create`), while `WorkOrdersController`'s two call sites are. Q2 (why a single-value enum instead of a string for `WorkOrderStatus`) was unknown, explained (compile-time type safety, forward compatibility with planned status transitions). Q3 (why the organization-membership check lives in the controller, not inside `IWorkOrderDirectory.Create`) correctly located *where* but not *why*; explained via ADR 0002 — the module has no reference to `FieldOps.Modules.Employees` at all, so only the host (which references both modules) can perform the cross-module check.
 * Independent task (reflect on why tracking a work order's creator matters, no code): answered with a real but partially conflated instinct (assumed the creator would update status later); corrected — status updates will likely be the *assignee*'s job (a distinct, later Week 9 topic), while the creator's value is more about accountability/traceability (a separate, later "Audit Logs" module) and potential future authorization rules.
+* `WorkOrderStatus` gained `Assigned`; `WorkOrder`/`WorkOrderSummary` gained nullable `AssignedEmployeeId`; `IWorkOrderDirectory.Assign` added (module-owned invariant: only an `Open` work order can be assigned) plus `GetById`.
+* `WorkOrderAssignmentResult`/`WorkOrderAssignmentService` added (host, mirroring Day 34's `EmployeeApplicationService` justification exactly — real cross-module coordination via `IEmployeeDirectory` plus a genuine business rule). `WorkOrdersController.Assign` (`POST /api/workorders/{id}/assign`) added, Admin-only.
+* Applied Day 37/38's information-disclosure lesson proactively: a work order that doesn't exist and one belonging to a different organization return the identical generic message.
+* 5 new integration tests added. Live Red→Green surfaced a real, self-caught test bug: `Assign_WorkOrderFromAnotherOrganization_ReturnsBadRequest`'s first version stayed green even with the organization-match check disabled, because its chosen `employeeId` tripped a different, unrelated check that produced the same `400` by coincidence — fixed by targeting an employee who genuinely belongs to the work order's own organization, isolating the check actually under test.
+* Live curl verification, 5 scenarios via a real running instance, all correct: legitimate assign, re-assignment rejection, cross-org work order target, cross-org assignee, Member forbidden.
+* `docs/daily-code-notes/day-41.md` created (Turkish), including the self-caught test-bug story.
+* Understanding questions: Q1 (module vs. host rule placement) answered correctly and precisely, unprompted. Q2 (the test-bug story) needed a full re-explanation. Q3 (why `Assign` is unambiguously Admin-only unlike `GetAll`'s open question) answered correctly and concisely.
+* Independent task (is the employee-lookup's message asymmetry with the work-order check a justified difference or an inconsistency?): Berkan couldn't resolve it and asked Claude to decide. Assessed as a genuine inconsistency — the same cross-tenant id-probing risk Day 37/38 closed for organization ids applies equally to employee ids reachable through this endpoint. Fixed and live-verified at Berkan's explicit follow-up request ("şimdi düzelt") the same session: a missing employee and one from another organization now return the identical generic message.
 
 ## Decisions on record
 
@@ -342,6 +350,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Continue Phase 3, Week 9, Day 41: likely work-order assignment to a specific employee and/or the first real status transition (`Open` → `Assigned`), building on Day 40's WorkOrders foundation. Exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Continue Phase 3, Week 9, Day 42: likely `InProgress`/`Completed` transitions, unassignment/reassignment rules, or file evidence, building on Day 41's assignment feature. Exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
