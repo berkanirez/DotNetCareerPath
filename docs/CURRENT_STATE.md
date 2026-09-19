@@ -6,12 +6,12 @@ This file reflects the actual current state of the learning journey. It must alw
 
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
-* **Week:** 8 — in progress
-* **Day:** 38 (complete)
+* **Week:** 8 — **complete**
+* **Day:** 39 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** A real horizontal privilege escalation vulnerability (found via code review, not assigned) was fixed and live-verified: Day 37's Admin check never verified *which* organization the acting Admin belonged to, letting Org 1's Admin inject employees into Org 2 just by changing `X-Organization-Id`. Fixed with an `actingEmployee.OrganizationId != organizationId` check in `EmployeesController.Create`, proven via live Red→Green and a real re-run of the original exploit (now `403`). A second, related vulnerability was found via today's independent task and live-confirmed: `GetAll` has no identity check at all — anyone can read any organization's employee list just by supplying that org's id, with zero credentials. Not fixed yet, flagged for Day 39.
+* **Status:** `GetAll`'s identity-less exposure (found via Day 38's independent task, live-confirmed) is closed: it now requires `X-Employee-Id` and rejects (`403`) a caller whose own organization doesn't match the one being queried, mirroring `Create`'s Day 38 fix. Deliberately left without a role restriction — resolved via today's independent task (a Member can see their own organization's full roster; no sensitive data is exposed, and Week 9's upcoming work-order assignment will likely require it). Week 8's full roadmap topic list (multi-tenancy, tenant identification, tenant isolation, membership, granular RBAC, authorization tests, cross-tenant attack scenarios) is now closed — all three real vulnerabilities found (Days 35, 38, 39) were genuinely discovered in this codebase's own code, not staged.
 * **Available study time:** 2 hours/day
-* **Progress:** ~35% (Day 38 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~35% (Day 39 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -303,6 +303,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-38.md` created (Turkish), including the full exploit-then-fix trace and the "why did an untouched test break" story.
 * Understanding questions: Q1 (why an untouched test broke) and Q2 (why the "Orphaned Admin" seed was needed) were both unknown, explained in full with concrete code references. Q3 (would swapping the role-check/org-match-check order matter) got a real but misapplied answer — Berkan correctly invoked Day 37's information-disclosure principle but applied it to the wrong pair of checks; corrected: swapping two authorization checks that both already gate the same downstream disclosure-risk step produces the same final status code either way, only the message text differs.
 * Independent task (check whether `GetAll` has a similar gap): answered correctly and confidently, unprompted — identified that any organization id lets a caller see that organization's employee list regardless of membership. Live-verified together afterward and found even more severe than described: `GetAll` requires no `X-Employee-Id` at all, not even a fake one. Not fixed today — flagged as Day 39's likely topic.
+* `EmployeesController.GetAll` fixed: gained `[FromHeader(Name = "X-Employee-Id")]`, with the same missing-header/unknown-employee/organization-mismatch checks as `Create` (Day 38) but deliberately no role check. Two new tests (`GetAll_NoEmployeeHeader_ReturnsBadRequest`, `GetAll_ByEmployeeFromAnotherOrganization_ReturnsForbidden`); the existing `GetAll_ScopedToOrganization_NeverReturnsAnotherOrganizationsEmployees` needed a fix (its `org2Client` had never sent `X-Employee-Id`, which went from harmless to a `400`-causing deserialization exception) — the same class of "new gate changes an existing test's code path" lesson as Day 38's Q1.
+* Explicitly discussed and declined extracting a shared helper for the now-duplicated three-check pattern between `Create` and `GetAll` — only two call sites exist (rule of three), and they aren't even identical (`Create` has an extra role check).
+* Live Red→Green: the new mismatch check commented out → `GetAll_ByEmployeeFromAnotherOrganization_ReturnsForbidden` genuinely failed → restored → 11/11 green. Live re-verification against a real running instance: no identity at all → `400`; wrong-organization Admin → `403`; legitimate same-organization Member → `200`.
+* `docs/daily-code-notes/day-39.md` created (Turkish).
+* Understanding questions: Q1 ("ürün kararı," why no role restriction on `GetAll`) answered correctly and tersely. Q2 ("rule of three") answered correctly in substance, confirmed and rephrased. Q3 (why the untouched cross-org test broke) was unknown, explained as the same mechanism as Day 38's Q1, applied to `GetAll`.
+* Independent task (decide, not "it depends," whether a Member should see their organization's full employee roster): Berkan asked Claude to answer directly. Decided **yes** — today's exposed data isn't sensitive, and Week 9's upcoming work-order assignment will likely require it anyway; matches the code already written (no role check needed).
+* **Week 8 is complete.** Days 35-39 covered the full roadmap topic list: multi-tenancy, tenant identification, tenant isolation (Day 35), membership and granular RBAC (Day 37), authorization tests (Day 36, 38, 39), and cross-tenant attack scenarios (Days 38-39, both genuinely discovered vulnerabilities, not staged).
 
 ## Decisions on record
 
@@ -328,6 +335,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 3, Week 8, Day 39: likely closing out the week by fixing `GetAll`'s identity-less exposure (found and live-confirmed via Day 38's independent task — any caller can read any organization's employee list with zero credentials, not even a fake `X-Employee-Id`), the natural symmetric counterpart to Day 38's `Create` fix. Exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Begin Phase 3, **Week 9** (work-order lifecycle, assignment, scheduling, status transitions, file evidence, customer approval, business-rule tests), Day 40: exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 

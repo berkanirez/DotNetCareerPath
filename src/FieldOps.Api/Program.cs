@@ -1,6 +1,7 @@
 using FieldOps.Api.Application;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.Organizations;
+using FieldOps.Modules.WorkOrders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,7 @@ builder.Services.AddOpenApi();
 // names either module's internal concrete implementation class directly.
 builder.Services.AddOrganizationsModule();
 builder.Services.AddEmployeesModule();
+builder.Services.AddWorkOrdersModule();
 
 // Application-layer service: cross-module orchestration that belongs to the
 // host (Day 34), not inside either module or directly inside a controller.

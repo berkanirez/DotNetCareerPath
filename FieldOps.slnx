@@ -3,6 +3,7 @@
     <Project Path="src/FieldOps.Api/FieldOps.Api.csproj" />
     <Project Path="src/FieldOps.Modules.Employees/FieldOps.Modules.Employees.csproj" />
     <Project Path="src/FieldOps.Modules.Organizations/FieldOps.Modules.Organizations.csproj" />
+    <Project Path="src/FieldOps.Modules.WorkOrders/FieldOps.Modules.WorkOrders.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FieldOps.Api.Tests/FieldOps.Api.Tests.csproj" />
