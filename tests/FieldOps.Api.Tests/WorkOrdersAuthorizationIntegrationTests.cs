@@ -289,5 +289,121 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<WebApplicat
         Assert.Equal(HttpStatusCode.BadRequest, completeResponse.StatusCode);
     }
 
+    // Day 43: creates a genuinely new Org1 employee via the Employees API,
+    // so reassignment tests have a second real, valid target within Org1
+    // without depending on more seed data than already exists.
+    private static async Task<int> CreateOrg1EmployeeAsync(HttpClient org1AdminClient, string name)
+    {
+        var response = await org1AdminClient.PostAsJsonAsync("/api/employees", new { Name = name });
+        var body = await response.Content.ReadFromJsonAsync<EmployeeDto>();
+        return body!.Id;
+    }
+
+    [Fact]
+    public async Task Reassign_WhileAssigned_ChangesAssigneeWithoutChangingStatus()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Reassign-Me-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+        var newEmployeeId = await CreateOrg1EmployeeAsync(org1AdminClient, $"Cover-{Guid.NewGuid():N}");
+
+        var reassignResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = newEmployeeId });
+        var reassigned = await reassignResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, reassignResponse.StatusCode);
+        Assert.Equal(1, reassigned!.Status); // still WorkOrderStatus.Assigned
+        Assert.Equal(newEmployeeId, reassigned.AssignedEmployeeId);
+    }
+
+    [Fact]
+    public async Task Reassign_WhileInProgress_Succeeds()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Reassign-InProgress-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/start", null);
+
+        var newEmployeeId = await CreateOrg1EmployeeAsync(org1AdminClient, $"Takeover-{Guid.NewGuid():N}");
+        var reassignResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = newEmployeeId });
+        var reassigned = await reassignResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, reassignResponse.StatusCode);
+        Assert.Equal(2, reassigned!.Status); // still WorkOrderStatus.InProgress
+    }
+
+    [Fact]
+    public async Task Reassign_OnOpenWorkOrder_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+
+        var createResponse = await org1AdminClient.PostAsJsonAsync("/api/workorders", new { Title = $"Never-Assigned-{Guid.NewGuid():N}" });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        // Nothing to reassign — Reassign is for handing off already-assigned
+        // work, not a substitute for the first Assign.
+        var reassignResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{created!.Id}/reassign", new { EmployeeId = 2 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, reassignResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reassign_OnCompletedWorkOrder_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Finished-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/start", null);
+        await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/complete", null);
+
+        var reassignResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = 2 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, reassignResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reassign_ByMember_ReturnsForbidden()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Member-Cannot-Reassign-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+
+        var reassignResponse = await org1MemberClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = 2 });
+
+        Assert.Equal(HttpStatusCode.Forbidden, reassignResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reassign_ToEmployeeFromAnotherOrganization_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Cross-Org-Reassign-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var reassignResponse = await org1AdminClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/reassign", new { EmployeeId = 4 }); // seeded Org2 Member
+
+        Assert.Equal(HttpStatusCode.BadRequest, reassignResponse.StatusCode);
+    }
+
+    private record EmployeeDto(int Id, string Name, int OrganizationId, int Role);
+
     private record WorkOrderDto(int Id, string Title, int OrganizationId, int Status, int? AssignedEmployeeId);
 }

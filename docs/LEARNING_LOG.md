@@ -1576,3 +1576,38 @@ Copy this template for each new entry:
 **Independent task:** Decide whether the employee-lookup's two distinguishable failure messages were a justified difference or an inconsistency with the work-order check's information-hiding. Berkan couldn't resolve it and asked Claude to answer ("bilemedim cevap ne") — assessed as a genuine inconsistency (the same cross-tenant id-probing risk applies to employee ids, not just organization/work-order ids) and, at Berkan's explicit follow-up request ("şimdi düzelt"), fixed and live-verified the same session.
 
 **Next session:** Phase 3, Week 9 continues — likely `InProgress`/`Completed` transitions, unassignment/reassignment rules, or file evidence; exact scope to be finalized at the start of the session.
+
+### 2026-09-19 — Phase 3, Week 9, Day 42
+
+**Topic:** `Assigned` → `InProgress` → `Completed` transitions, and a third kind of authorization: ownership (is the caller the specific employee this work order was assigned to), distinct from Day 35's tenant membership and Day 37's role.
+
+**Problem solved:** A work order could be assigned (Day 41) but nothing modeled the actual work happening. Added `POST /api/workorders/{id}/start` and `.../complete`, both restricted to the work order's own assignee — not just any Admin, since assigning work isn't the same as doing it.
+
+**What I learned:** A clean architectural split reinforced with a concrete example: `IWorkOrderDirectory.Start`/`Complete` take no `employeeId` at all and only enforce the module's own state-machine invariant (`Assigned`→`InProgress`, `InProgress`→`Completed`); the ownership check (`AssignedEmployeeId == actingEmployeeId`) lives in `WorkOrdersController`, not because it technically requires another module (it doesn't — `AssignedEmployeeId` is the module's own field), but for architectural consistency with where Day 37's role check already lives (authorization decisions in the host, state invariants in the module). Also predicted-then-verified: a work order with a `null` `AssignedEmployeeId` can never pass ownership for any real employee id, so an unassigned work order always fails ownership (`403`) before the state check is ever reached — confirmed live exactly as predicted.
+
+**What I implemented:**
+* `WorkOrderStatus` gained `InProgress`, `Completed`.
+* `IWorkOrderDirectory.Start(workOrderId)`/`Complete(workOrderId)` — module-owned state invariants only.
+* `WorkOrdersController.Start`/`Complete` + a new `ValidateOwnership` helper (mirrors Day 41's generic "does not exist" message for a missing/cross-org work order, then checks `AssignedEmployeeId`).
+* 5 new integration tests: legitimate start, Admin-who-isn't-the-assignee rejected, starting an unassigned work order rejected, legitimate complete, completing before starting rejected.
+
+**Runtime flow:** Request → membership check → ownership check (`AssignedEmployeeId == actingEmployeeId`, Admin status irrelevant) → module's `Start`/`Complete` applies its own prior-state rule.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 25/25 (20 existing + 5 new).
+* Live curl, full lifecycle on a real running instance: Admin creates+assigns → Admin (not the assignee) tries to start → `403` → assignee starts → `200`/`InProgress` → assignee completes → `200`/`Completed` → completing again → `400`.
+* Live Red→Green: the ownership check commented out → `Start_ByAdminWhoIsNotTheAssignee_ReturnsForbidden` genuinely failed (`Expected: Forbidden, Actual: OK`) → restored → 25/25 green.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `01d1570`): pending confirmation this session.
+
+**Evidence:** A third distinct authorization category (ownership) added to the two established this week (tenant membership, role), with a correct prediction of an edge case (unassigned work order → `403` not `400`) verified live before being trusted; commit (`01d1570`, pushed).
+
+**Mistakes or difficulties:** None new — today extended an established pattern rather than discovering a gap in one.
+
+**Production considerations:** No override mechanism exists for an Admin to force-complete or reassign a stuck work order — explicitly deferred. File evidence and customer approval remain later Week 9 topics.
+
+**Understanding questions and answers:** Q1 (why the ownership check lives in the controller, not inside `IWorkOrderDirectory`) needed a correction — Berkan's answer conflated Day 41's `Assign` reasoning (a real cross-module need) with today's, which has no technical cross-module requirement at all; the placement here is a deliberate architectural-consistency choice, not a necessity. Q2 (why an unassigned work order's `Start` attempt returns `403` not `400`) was unknown, explained: `AssignedEmployeeId` is `null` for an unassigned work order, and `null` can never equal any real `actingEmployeeId`, so ownership always fails first regardless of who asks. Q3 (was the "does not exist" message reused from Day 41's code or rewritten) answered correctly: rewritten, not shared — the two call sites live in different layers (`Application` vs `Controllers`) and weren't wired to share the literal.
+
+**Independent task:** Determine, by reading (not running) the code, whether an Admin can currently reassign an already-assigned work order (e.g., if the assignee is on leave). Answered correctly, unprompted: no — `WorkOrderAssignmentService`'s `workOrder.Status != WorkOrderStatus.Open` check rejects any assignment attempt on a work order that isn't still `Open`, regardless of who attempts it or to whom, which Day 41's `Assign_AlreadyAssigned_ReturnsBadRequest` test already demonstrates. Flagged as a plausible future gap (no reassignment path exists yet), not fixed today.
+
+**Next session:** Phase 3, Week 9 continues — likely reassignment/unassignment rules, file evidence, or customer approval; exact scope to be finalized at the start of the session.

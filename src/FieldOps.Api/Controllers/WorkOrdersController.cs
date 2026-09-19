@@ -84,19 +84,45 @@ public class WorkOrdersController : ControllerBase
             return membershipError;
         }
 
-        // ValidateMembership already looked this employee up once — looked
-        // up again here since only this one action needs the role, and
-        // adding an out-parameter to ValidateMembership purely for this
-        // single caller would complicate a helper the other two actions
-        // don't need changed. A real, negligible cost against an in-memory
-        // list; worth revisiting once a real database makes lookups non-free.
-        var actingEmployee = _employeeDirectory.GetById(actingEmployeeId!.Value)!;
-        if (actingEmployee.Role != EmployeeRole.Admin)
+        var adminError = ValidateIsAdmin(actingEmployeeId!.Value, "assign");
+        if (adminError is not null)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, "Only an Admin can assign work orders.");
+            return adminError;
         }
 
         var result = _workOrderAssignmentService.AssignWorkOrder(id, request.EmployeeId, organizationId!.Value);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result.Error);
+        }
+
+        return Ok(ToDto(result.WorkOrder!));
+    }
+
+    // Day 43: reuses AssignWorkOrderRequest — identical shape (just an
+    // EmployeeId), no reason for a separate ReassignWorkOrderRequest record.
+    // Admin-only, same precedent as Assign; the Assigned-or-InProgress
+    // precondition (not Open, not Completed) lives in the service.
+    [HttpPost("{id}/reassign")]
+    public ActionResult<WorkOrderDto> Reassign(
+        int id,
+        AssignWorkOrderRequest request,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var adminError = ValidateIsAdmin(actingEmployeeId!.Value, "reassign");
+        if (adminError is not null)
+        {
+            return adminError;
+        }
+
+        var result = _workOrderAssignmentService.ReassignWorkOrder(id, request.EmployeeId, organizationId!.Value);
         if (!result.Succeeded)
         {
             return BadRequest(result.Error);
@@ -163,6 +189,28 @@ public class WorkOrdersController : ControllerBase
         }
 
         return Ok(ToDto(updated));
+    }
+
+    // Day 43: extracted once Assign and Reassign both needed the EXACT same
+    // role check — unlike EmployeesController (Day 39), left duplicated
+    // because its two call sites genuinely differed, these two are
+    // byte-for-byte identical, so extracting immediately (not waiting for a
+    // third occurrence) matches Day 40's WorkOrdersController reasoning.
+    private ActionResult? ValidateIsAdmin(int actingEmployeeId, string action)
+    {
+        // ValidateMembership already looked this employee up once — looked
+        // up again here since only Assign/Reassign need the role, and
+        // adding an out-parameter to ValidateMembership purely for these
+        // two callers would complicate a helper GetAll/Create/Start/Complete
+        // don't need changed. A real, negligible cost against an in-memory
+        // list; worth revisiting once a real database makes lookups non-free.
+        var actingEmployee = _employeeDirectory.GetById(actingEmployeeId)!;
+        if (actingEmployee.Role != EmployeeRole.Admin)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, $"Only an Admin can {action} work orders.");
+        }
+
+        return null;
     }
 
     // Shared by Start/Complete — same "does this work order genuinely exist,

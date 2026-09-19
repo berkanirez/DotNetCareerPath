@@ -68,6 +68,18 @@ internal class InMemoryWorkOrderDirectory : IWorkOrderDirectory
         return ToSummary(workOrder);
     }
 
+    public WorkOrderSummary? Reassign(int workOrderId, int newEmployeeId)
+    {
+        var workOrder = _workOrders.FirstOrDefault(w => w.Id == workOrderId);
+        if (workOrder is null || (workOrder.Status != WorkOrderStatus.Assigned && workOrder.Status != WorkOrderStatus.InProgress))
+        {
+            return null;
+        }
+
+        workOrder.AssignedEmployeeId = newEmployeeId;
+        return ToSummary(workOrder);
+    }
+
     private static WorkOrderSummary ToSummary(WorkOrder workOrder) =>
         new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId);
 }

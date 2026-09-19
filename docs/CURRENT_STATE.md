@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 9 — in progress (Week 8 complete)
-* **Day:** 41 (complete)
+* **Day:** 42 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** Work-order assignment added (`POST /api/workorders/{id}/assign`, Admin-only): the first real status transition, `Open` → `Assigned`, coordinated by a new host-level `WorkOrderAssignmentService` (same justification as Day 34's `EmployeeApplicationService`). A self-caught test bug (a test that passed for the wrong reason) was found and fixed during the live Red→Green step. A genuine information-disclosure inconsistency (employee lookup distinguishing "doesn't exist" from "wrong organization," unlike the work-order check) was found via the independent task and fixed same-session, applying Day 37/38's lesson consistently.
+* **Status:** `Assigned → InProgress → Completed` transitions added (`POST /api/workorders/{id}/start`/`.../complete`), introducing a third authorization category alongside Day 35's tenant membership and Day 37's role: ownership — only the specific employee a work order was assigned to (not any Admin) may start or complete it. State-machine invariants stayed module-owned (`IWorkOrderDirectory.Start`/`Complete`); the ownership check lives in the host controller for architectural consistency with where role checks already live, not because it technically needs another module.
 * **Available study time:** 2 hours/day
-* **Progress:** ~36% (Day 41 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~37% (Day 42 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -325,6 +325,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-41.md` created (Turkish), including the self-caught test-bug story.
 * Understanding questions: Q1 (module vs. host rule placement) answered correctly and precisely, unprompted. Q2 (the test-bug story) needed a full re-explanation. Q3 (why `Assign` is unambiguously Admin-only unlike `GetAll`'s open question) answered correctly and concisely.
 * Independent task (is the employee-lookup's message asymmetry with the work-order check a justified difference or an inconsistency?): Berkan couldn't resolve it and asked Claude to decide. Assessed as a genuine inconsistency — the same cross-tenant id-probing risk Day 37/38 closed for organization ids applies equally to employee ids reachable through this endpoint. Fixed and live-verified at Berkan's explicit follow-up request ("şimdi düzelt") the same session: a missing employee and one from another organization now return the identical generic message.
+* `WorkOrderStatus` gained `InProgress`/`Completed`; `IWorkOrderDirectory.Start`/`Complete` added — module-owned state-machine invariants only (no `employeeId` parameter at all, unlike `Assign`, since ownership isn't a cross-module fact here).
+* `WorkOrdersController.Start`/`Complete` added, plus a new `ValidateOwnership` helper: checks the work order exists and belongs to the caller's organization (Day 41's identical generic "does not exist" message, rewritten rather than shared across layers), then that `AssignedEmployeeId == actingEmployeeId` — a third authorization category (ownership) alongside Day 35's tenant membership and Day 37's role.
+* 5 new integration tests added. Live Red→Green: the ownership check disabled → `Start_ByAdminWhoIsNotTheAssignee_ReturnsForbidden` genuinely failed → restored → 25/25 green.
+* Live curl verification, full lifecycle on a real running instance: Admin creates+assigns → Admin (not the assignee) blocked (`403`) → assignee starts (`200`) → assignee completes (`200`) → re-completing rejected (`400`).
+* `docs/daily-code-notes/day-42.md` created (Turkish).
+* Understanding questions: Q1 (why the ownership check lives in the controller) needed correction — Berkan conflated `Assign`'s real cross-module need with today's check, which has none; the placement is architectural-consistency, not necessity. Q2 (why an unassigned work order's `Start` returns `403` not `400`) was unknown, explained (`null` `AssignedEmployeeId` can never equal a real employee id, so ownership always fails first) — predicted correctly by Berkan while writing the test, then live-confirmed. Q3 (was the generic message reused or rewritten) answered correctly: rewritten, the two call sites live in different layers.
+* Independent task (can an Admin currently reassign an already-assigned work order?): answered correctly by reading the code alone, unprompted — no, `WorkOrderAssignmentService`'s `Status != Open` check blocks any reassignment regardless of actor, already demonstrated by Day 41's `Assign_AlreadyAssigned_ReturnsBadRequest` test. Flagged as a plausible future gap, not fixed today.
 
 ## Decisions on record
 
@@ -350,6 +357,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Continue Phase 3, Week 9, Day 42: likely `InProgress`/`Completed` transitions, unassignment/reassignment rules, or file evidence, building on Day 41's assignment feature. Exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Continue Phase 3, Week 9, Day 43: likely reassignment/unassignment rules, file evidence, or customer approval, building on Day 42's status-transition foundation. Exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 

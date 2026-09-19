@@ -32,4 +32,11 @@ public interface IWorkOrderDirectory
     // isn't in the required prior state.
     WorkOrderSummary? Start(int workOrderId);
     WorkOrderSummary? Complete(int workOrderId);
+
+    // Day 43: changes WHO is assigned without changing Status — unlike
+    // Assign (Open -> Assigned), Reassign only makes sense while a work
+    // order is already Assigned or InProgress (someone was doing it, now
+    // someone else will). Returns null if the work order doesn't exist or
+    // isn't currently in one of those two states.
+    WorkOrderSummary? Reassign(int workOrderId, int newEmployeeId);
 }
