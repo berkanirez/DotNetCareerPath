@@ -447,6 +447,176 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<WebApplicat
         Assert.Equal(HttpStatusCode.BadRequest, reassignResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task Unassign_ByAdmin_ReturnsToOpenWithNoAssignee()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Unassign-By-Admin-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var unassignResponse = await org1AdminClient.PostAsync($"/api/workorders/{assigned.Id}/unassign", null);
+        var unassigned = await unassignResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, unassignResponse.StatusCode);
+        Assert.Equal(0, unassigned!.Status); // WorkOrderStatus.Open == 0
+        Assert.Null(unassigned.AssignedEmployeeId);
+    }
+
+    [Fact]
+    public async Task Unassign_ByCurrentAssignee_Succeeds()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Unassign-By-Self-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var assigneeClient = _factory.CreateClient();
+        assigneeClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        assigneeClient.DefaultRequestHeaders.Add("X-Employee-Id", "2"); // the assignee, not an Admin
+
+        var unassignResponse = await assigneeClient.PostAsync($"/api/workorders/{assigned.Id}/unassign", null);
+
+        Assert.Equal(HttpStatusCode.OK, unassignResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Unassign_ByUnrelatedMember_ReturnsForbidden()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Unassign-Unrelated-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var unrelatedEmployeeId = await CreateOrg1EmployeeAsync(org1AdminClient, $"Bystander-{Guid.NewGuid():N}");
+        var unrelatedClient = _factory.CreateClient();
+        unrelatedClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        unrelatedClient.DefaultRequestHeaders.Add("X-Employee-Id", unrelatedEmployeeId.ToString());
+
+        var unassignResponse = await unrelatedClient.PostAsync($"/api/workorders/{assigned.Id}/unassign", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, unassignResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Unassign_OnOpenWorkOrder_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+
+        var createResponse = await org1AdminClient.PostAsJsonAsync("/api/workorders", new { Title = $"Nothing-To-Unassign-{Guid.NewGuid():N}" });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        var unassignResponse = await org1AdminClient.PostAsync($"/api/workorders/{created!.Id}/unassign", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, unassignResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Unassign_OnCompletedWorkOrder_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Already-Done-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/start", null);
+        await org1MemberClient.PostAsync($"/api/workorders/{assigned.Id}/complete", null);
+
+        var unassignResponse = await org1AdminClient.PostAsync($"/api/workorders/{assigned.Id}/unassign", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, unassignResponse.StatusCode);
+    }
+
+    private static async Task<WorkOrderDto> CompleteFullLifecycleAsync(HttpClient adminClient, HttpClient assigneeClient, string title, int assigneeEmployeeId)
+    {
+        var createResponse = await adminClient.PostAsJsonAsync("/api/workorders", new { Title = title });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+        await adminClient.PostAsJsonAsync($"/api/workorders/{created!.Id}/assign", new { EmployeeId = assigneeEmployeeId });
+        await assigneeClient.PostAsync($"/api/workorders/{created.Id}/start", null);
+        var completeResponse = await assigneeClient.PostAsync($"/api/workorders/{created.Id}/complete", null);
+        return (await completeResponse.Content.ReadFromJsonAsync<WorkOrderDto>())!;
+    }
+
+    [Fact]
+    public async Task Reopen_ByAdmin_ReturnsToInProgress()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var completed = await CompleteFullLifecycleAsync(org1AdminClient, org1MemberClient, $"Reopen-Me-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var reopenResponse = await org1AdminClient.PostAsync($"/api/workorders/{completed.Id}/reopen", null);
+        var reopened = await reopenResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, reopenResponse.StatusCode);
+        Assert.Equal(2, reopened!.Status); // WorkOrderStatus.InProgress == 2
+    }
+
+    [Fact]
+    public async Task Reopen_ByMember_ReturnsForbidden()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var completed = await CompleteFullLifecycleAsync(org1AdminClient, org1MemberClient, $"Member-Cannot-Reopen-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        // Even the assignee — who completed it themselves — cannot reopen;
+        // this is deliberately Admin-only, unlike Reassign/Unassign.
+        var reopenResponse = await org1MemberClient.PostAsync($"/api/workorders/{completed.Id}/reopen", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, reopenResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reopen_OnNonCompletedWorkOrder_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+
+        var createResponse = await org1AdminClient.PostAsJsonAsync("/api/workorders", new { Title = $"Not-Done-Yet-{Guid.NewGuid():N}" });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        var reopenResponse = await org1AdminClient.PostAsync($"/api/workorders/{created!.Id}/reopen", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, reopenResponse.StatusCode);
+    }
+
+    // The exact exploit live-proven before this fix existed: an Org 2 Admin
+    // reopening Org 1's completed work order just by naming its id, because
+    // the first version of Reopen's authorization check never verified the
+    // work order's own organization at all.
+    [Fact]
+    public async Task Reopen_ByAdminFromAnotherOrganization_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var completed = await CompleteFullLifecycleAsync(org1AdminClient, org1MemberClient, $"Org1-Private-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org2AdminClient = _factory.CreateClient();
+        org2AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "2");
+        org2AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "3");
+
+        var reopenResponse = await org2AdminClient.PostAsync($"/api/workorders/{completed.Id}/reopen", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, reopenResponse.StatusCode);
+    }
+
     private record EmployeeDto(int Id, string Name, int OrganizationId, int Role);
 
     private record WorkOrderDto(int Id, string Title, int OrganizationId, int Status, int? AssignedEmployeeId);

@@ -39,4 +39,18 @@ public interface IWorkOrderDirectory
     // someone else will). Returns null if the work order doesn't exist or
     // isn't currently in one of those two states.
     WorkOrderSummary? Reassign(int workOrderId, int newEmployeeId);
+
+    // Day 45: clears the assignment entirely and returns to Open — the
+    // simplest of the four mutations, since (unlike Assign/Reassign) there's
+    // no new employeeId to validate at all, no cross-module fact needed.
+    // Same prior-state requirement as Reassign (Assigned or InProgress);
+    // unassigning an already-Open or Completed work order makes no sense.
+    WorkOrderSummary? Unassign(int workOrderId);
+
+    // Day 45 independent-task addition: without this, Completed was a
+    // permanent dead end — no transition anywhere accepted it as a starting
+    // state. Reopens back to InProgress (not Open/Assigned) since the
+    // original assignee is still on record and simply resumes; returns
+    // null if the work order doesn't exist or isn't currently Completed.
+    WorkOrderSummary? Reopen(int workOrderId);
 }

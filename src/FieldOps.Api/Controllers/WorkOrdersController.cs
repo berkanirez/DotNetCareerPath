@@ -135,6 +135,82 @@ public class WorkOrdersController : ControllerBase
         return Ok(ToDto(result.WorkOrder!));
     }
 
+    // Day 45: the simplest of the four mutations — no new employeeId to
+    // validate, so no cross-module fact is needed and no
+    // WorkOrderAssignmentService call is involved, unlike Assign/Reassign.
+    // Reuses Day 44's ValidateIsAdminOrAssignee as-is (no new duplication):
+    // an Admin, or the current assignee, may drop a work order back to
+    // Open with nobody assigned.
+    [HttpPost("{id}/unassign")]
+    public ActionResult<WorkOrderDto> Unassign(
+        int id,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var authError = ValidateIsAdminOrAssignee(id, organizationId, actingEmployeeId, "unassign");
+        if (authError is not null)
+        {
+            return authError;
+        }
+
+        var updated = _workOrderDirectory.Unassign(id);
+        if (updated is null)
+        {
+            return BadRequest($"Work order {id} must be Assigned or InProgress before it can be unassigned.");
+        }
+
+        return Ok(ToDto(updated));
+    }
+
+    // Day 45 independent-task addition: without this, Completed was a
+    // permanent dead end. Deliberately Admin-only (reuses ValidateIsAdmin's
+    // role check, Assign's precedent) rather than Reassign/Unassign's
+    // combined rule — un-completing work is a higher-stakes correction (the
+    // assignee already declared it done), not something the assignee
+    // should be able to reverse unilaterally at will.
+    //
+    // A real, live-caught bug during this exact write-up: the first version
+    // called ValidateIsAdmin alone, which only checks the ACTING employee's
+    // role — never whether the target work order belongs to their
+    // organization at all. Live-proven exploit: an Org 1 Admin could reopen
+    // Org 2's completed work order just by naming its id. Assign avoids
+    // this because WorkOrderAssignmentService's ValidateWorkOrderAndEmployee
+    // checks the work order's organization downstream; Reopen calls
+    // IWorkOrderDirectory directly with no such layer, so the check has to
+    // happen here instead.
+    [HttpPost("{id}/reopen")]
+    public ActionResult<WorkOrderDto> Reopen(
+        int id,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var adminError = ValidateIsAdminForWorkOrder(id, organizationId, actingEmployeeId, "reopen");
+        if (adminError is not null)
+        {
+            return adminError;
+        }
+
+        var updated = _workOrderDirectory.Reopen(id);
+        if (updated is null)
+        {
+            return BadRequest($"Work order {id} must be Completed before it can be reopened.");
+        }
+
+        return Ok(ToDto(updated));
+    }
+
     // Day 42: ownership-based authorization — a third kind alongside Day 35's
     // tenant membership and Day 37's role. "Is the caller the specific
     // employee this work order was assigned to" isn't a group fact (any org
@@ -236,6 +312,30 @@ public class WorkOrdersController : ControllerBase
         if (actingEmployee.Role != EmployeeRole.Admin && workOrder.AssignedEmployeeId != actingEmployeeId)
         {
             return StatusCode(StatusCodes.Status403Forbidden, $"Only an Admin or the assigned employee can {action} this work order.");
+        }
+
+        return null;
+    }
+
+    // Day 45 bug fix: Reopen's Admin-only rule, but — unlike ValidateIsAdmin
+    // — also confirms the work order itself belongs to the caller's
+    // organization. Deliberately kept separate from ValidateIsAdminOrAssignee
+    // above rather than merged: the two aren't identical (this one has no
+    // ownership OR-branch at all), so forcing them into one method would be
+    // exactly the "not really the same" trap Day 39/40 warned about.
+    private ActionResult? ValidateIsAdminForWorkOrder(int workOrderId, int? organizationId, int? actingEmployeeId, string action)
+    {
+        var actingEmployee = _employeeDirectory.GetById(actingEmployeeId!.Value)!;
+
+        var workOrder = _workOrderDirectory.GetById(workOrderId);
+        if (workOrder is null || workOrder.OrganizationId != organizationId)
+        {
+            return BadRequest($"Work order {workOrderId} does not exist.");
+        }
+
+        if (actingEmployee.Role != EmployeeRole.Admin)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, $"Only an Admin can {action} work orders.");
         }
 
         return null;

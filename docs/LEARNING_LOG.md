@@ -1646,3 +1646,38 @@ Copy this template for each new entry:
 **Independent task:** Determine (by reading, not running) whether the current assignee can self-initiate a reassignment (e.g., "I can't do this, hand it to someone else"), and give an opinion on whether that should be possible. Answered correctly on both counts, unprompted: the code doesn't support it today (`ValidateIsAdmin` is unconditional), and it would be a good real-world feature to add. Noted forward: this would be FieldOps's first *combined* authorization rule (role OR ownership — Admin, or the current assignee), a genuinely new pattern distinct from Days 35/37/42's single-category checks, and a plausible topic for a later day.
 
 **Next session:** Phase 3, Week 9 continues — likely combined role-or-ownership authorization (self-service reassignment), unassignment, file evidence, or customer approval; exact scope to be finalized at the start of the session.
+
+### 2026-09-19 — Phase 3, Week 9, Day 44
+
+**Topic:** FieldOps's first combined authorization rule — role OR ownership — implementing the self-service reassignment idea from Day 43's independent task.
+
+**Problem solved:** `Reassign` (Day 43) was Admin-only, forcing an assignee who can't do the work to go through an Admin every time. Added a combined check: an Admin, or the work order's current assignee, may reassign it — `Assign` (distributing brand-new work) stays Admin-only, a deliberate, distinct business rule.
+
+**What I learned:** A real, self-caught test-invalidation case — adding the new capability made `Reassign_ByMember_ReturnsForbidden`'s premise stop holding (its "any Member" example, employee 2, was also the work order's own assignee, now a legitimate actor), turning an expected `403` into a correct `200` and failing the test. Fixed by renaming/rewriting it against a genuinely unrelated employee (`Reassign_ByUnrelatedMember_ReturnsForbidden`), not by loosening the assertion — the original intent (an unrelated Member is still blocked) still needed proving, just with valid data.
+
+**What I implemented:**
+* `WorkOrdersController.ValidateIsAdminOrAssignee`: fetches the work order (unlike `ValidateIsAdmin`, which only needs the acting employee), applies Day 41's generic "does not exist" message, then allows either `Role == Admin` or `AssignedEmployeeId == actingEmployeeId`.
+* `Reassign` switched from `ValidateIsAdmin` to this new check; `Assign` unchanged (still Admin-only) — `ValidateIsAdmin` kept as its own named method even with one caller, since "Assign is Admin-only" is a standalone business rule worth naming.
+* Test fix (`Reassign_ByUnrelatedMember_ReturnsForbidden`) plus a new test proving the actual capability (`Reassign_ByCurrentAssignee_Succeeds`).
+* **Independent-task fix:** Berkan found, by reading the code, that reassigning to the already-assigned employee was a silent no-op nothing rejected — fixed with an explicit `newEmployeeId == workOrder.AssignedEmployeeId` check in `WorkOrderAssignmentService.ReassignWorkOrder`, live-verified and covered by a new test. Berkan also separately checked whether an unrelated Member could reassign someone else's work order and couldn't find where that was prevented — it was already prevented, in the same combined-check line; confirmed with the exact code reference and the existing live/test evidence rather than a new fix.
+
+**Runtime flow:** Request → membership → `ValidateIsAdminOrAssignee` (work order fetched, org-checked, then role-or-ownership) → `ReassignWorkOrder`: work order/employee validated → same-employee no-op rejected → status must be `Assigned`/`InProgress` → mutation.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 33/33 (31 existing, 1 renamed/fixed, 2 new across the session).
+* Live curl on a real running instance: the assignee (not Admin) hands off their own work order → `200`; an unrelated Member on someone else's work order → `403`; reassigning to the already-assigned employee → `400`.
+* Live Red→Green: the ownership branch of the combined check disabled → `Reassign_ByCurrentAssignee_Succeeds` genuinely failed (a JSON-parse exception on the non-JSON `403` body, the same pattern as Day 36) → restored → 33/33 green.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `9685f0f`): pending confirmation this session.
+
+**Evidence:** FieldOps's first genuinely combined (OR-based) authorization rule, distinguished in the same session from a plain single-category check; a second real gap found via independent code reading (not running) and fixed same-day with live proof; a self-caught test-invalidation handled correctly (fix the test's premise, not loosen its assertion); commit (`9685f0f`, pushed).
+
+**Mistakes or difficulties:** None new to the implementation — the broken test was anticipated as a natural consequence of the new feature, not a surprise.
+
+**Production considerations:** No notification/approval flow exists for a handoff — deferred. Unassignment (clearing an assignment entirely, returning to `Open`) still doesn't exist.
+
+**Understanding questions and answers:** Q1 (why `Assign` stays Admin-only while `Reassign` allows the assignee too) answered correctly, if informally: distributing brand-new work is a dispatcher decision, handing off already-assigned work can be the current owner's own call. Q2 (why the existing test broke) was unknown, explained in full. Q3 (why the combined check needs the work order but `ValidateIsAdmin` doesn't) got a one-word non-answer ("neden") and was explained: answering "are you the assignee" requires first knowing who the assignee is.
+
+**Independent task:** Two-part code-reading check (no running code): (1) can a caller reassign to the employee already assigned (a no-op)? (2) is there anywhere confirming a Member reassigning is actually the work order's own assignee? Part 1: correctly identified as a real, unguarded gap ("bu saçma olur değişmesi lazım") — fixed and live-verified same session. Part 2: raised as a concern but the protection was already present (`ValidateIsAdminOrAssignee`'s combined condition, already covered by `Reassign_ByUnrelatedMember_ReturnsForbidden` and a live curl step) — pointed back to the exact line and existing evidence rather than treated as a new bug.
+
+**Next session:** Phase 3, Week 9 continues — likely unassignment, file evidence, or customer approval; exact scope to be finalized at the start of the session.

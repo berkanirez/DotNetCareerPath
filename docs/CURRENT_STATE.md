@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 9 — in progress (Week 8 complete)
-* **Day:** 43 (complete)
+* **Day:** 44 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** Reassignment added (`POST /api/workorders/{id}/reassign`, Admin-only): an already-`Assigned`/`InProgress` work order can be handed to a different employee without resetting `Status`, closing the gap Day 42's independent task correctly identified. A live Red→Green proof exposed a real layered-invariant bug: disabling the service's own status check produced a genuine `500` (not just a wrong status), because a null-forgiving `!` assumed the module's own `null` return had become impossible — a concrete lesson on not treating another layer's check as a safety net.
+* **Status:** FieldOps's first combined (OR-based) authorization rule: `Reassign` now allows an Admin OR the work order's current assignee (self-service handoff), while `Assign` (distributing brand-new work) stays Admin-only — a deliberate, distinct rule. Two real gaps found via independent code reading were resolved: a genuine no-op bug (reassigning to the already-assigned employee) was fixed and live-verified; a second suspected gap (an unrelated Member reassigning someone else's work order) was confirmed already prevented by the existing combined check, not a new fix.
 * **Available study time:** 2 hours/day
-* **Progress:** ~38% (Day 43 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~39% (Day 44 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -339,6 +339,14 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-43.md` created (Turkish), including the layered-invariant bug story.
 * Understanding questions: Q1 (extraction rationale) answered correctly and tersely. Q2 (why the Red→Green proof produced a `500`) was unknown, explained in full. Q3 (why `Reassign` doesn't reset `Status`) needed a small refinement — Berkan's "we'd lose progress" instinct was directionally right but imprecise, since no granular progress data exists today; the real loss would be an accurate signal for future reporting.
 * Independent task (can the current assignee self-initiate reassignment, and should they be able to?): answered correctly on both counts by reading the code alone, unprompted — not supported today, and a good real-world feature to add. Noted as FieldOps's first plausible *combined* authorization rule (role OR ownership), a new pattern distinct from this week's single-category checks.
+* `WorkOrdersController.ValidateIsAdminOrAssignee` added — FieldOps's first combined (OR-based) authorization check: fetches the work order (unlike `ValidateIsAdmin`), then allows `Role == Admin` OR `AssignedEmployeeId == actingEmployeeId`. `Reassign` switched to it; `Assign` stays on `ValidateIsAdmin` (deliberately still Admin-only — a distinct business rule).
+* Self-caught test invalidation: `Reassign_ByMember_ReturnsForbidden`'s premise broke (its "any Member" example was also the work order's assignee, now legitimate) — fixed by rewriting against a genuinely unrelated employee (`Reassign_ByUnrelatedMember_ReturnsForbidden`), not by loosening the assertion. New test `Reassign_ByCurrentAssignee_Succeeds` added to prove the actual capability.
+* Live Red→Green: the ownership branch disabled → `Reassign_ByCurrentAssignee_Succeeds` genuinely failed (JSON-parse exception on the non-JSON `403` body, same pattern as Day 36) → restored → 33/33 green (after both fixes below).
+* Live curl verification: the assignee (not Admin) hands off their own work order (`200`); an unrelated Member on someone else's work order (`403`); reassigning to the already-assigned employee (`400`, see next bullet).
+* Independent-task fix #1 (real gap, found by reading code): reassigning to the employee already assigned was a silent no-op nothing rejected. Fixed with an explicit same-employee check in `WorkOrderAssignmentService.ReassignWorkOrder`, live-verified, covered by a new test (`Reassign_ToSameEmployeeAlreadyAssigned_ReturnsBadRequest`).
+* Independent-task check #2 (suspected gap, found to already be handled): whether an unrelated Member could reassign someone else's work order — already prevented by `ValidateIsAdminOrAssignee`'s combined condition, already covered by `Reassign_ByUnrelatedMember_ReturnsForbidden` and existing live evidence; confirmed rather than re-fixed.
+* `docs/daily-code-notes/day-44.md` created (Turkish), including both independent-task findings.
+* Understanding questions: Q1 (why `Assign` stays Admin-only while `Reassign` allows the assignee) answered correctly, informally. Q2 (why the existing test broke) was unknown, explained in full. Q3 (why the combined check needs the work order but `ValidateIsAdmin` doesn't) got a one-word non-answer, explained.
 
 ## Decisions on record
 
@@ -364,6 +372,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Continue Phase 3, Week 9, Day 44: likely combined role-or-ownership authorization (self-service reassignment by the current assignee), unassignment, file evidence, or customer approval. Exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Continue Phase 3, Week 9, Day 45: likely unassignment, file evidence, or customer approval, building on Day 44's combined-authorization foundation. Exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 
