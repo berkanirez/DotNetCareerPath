@@ -668,7 +668,114 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<WebApplicat
         Assert.Equal(HttpStatusCode.Forbidden, evidenceResponse.StatusCode);
     }
 
+    // Day 47: a full lifecycle, this time linked to a customer (seeded
+    // Org1 customer, id=1) from creation, taken all the way to Completed —
+    // the only state Approve accepts.
+    private async Task<WorkOrderDto> CompleteFullLifecycleWithCustomerAsync(HttpClient adminClient, HttpClient assigneeClient, string title, int assigneeEmployeeId, int? customerId)
+    {
+        var createResponse = await adminClient.PostAsJsonAsync("/api/workorders", new { Title = title, CustomerId = customerId });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+        await adminClient.PostAsJsonAsync($"/api/workorders/{created!.Id}/assign", new { EmployeeId = assigneeEmployeeId });
+        await assigneeClient.PostAsync($"/api/workorders/{created.Id}/start", null);
+        var completeResponse = await assigneeClient.PostAsync($"/api/workorders/{created.Id}/complete", null);
+        return (await completeResponse.Content.ReadFromJsonAsync<WorkOrderDto>())!;
+    }
+
+    [Fact]
+    public async Task Approve_ByLinkedCustomer_Succeeds()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var completed = await CompleteFullLifecycleWithCustomerAsync(org1AdminClient, org1MemberClient, $"For-Customer-{Guid.NewGuid():N}", assigneeEmployeeId: 2, customerId: 1);
+
+        var org1CustomerClient = _factory.CreateClient();
+        org1CustomerClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1CustomerClient.DefaultRequestHeaders.Add("X-Customer-Id", "1"); // seeded Org1 customer, the linked one
+
+        var approveResponse = await org1CustomerClient.PostAsync($"/api/workorders/{completed.Id}/approve", null);
+        var approved = await approveResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
+        Assert.True(approved!.CustomerApproved);
+    }
+
+    [Fact]
+    public async Task Approve_ByAnotherOrganizationsCustomer_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var completed = await CompleteFullLifecycleWithCustomerAsync(org1AdminClient, org1MemberClient, $"Org1-Customer-Only-{Guid.NewGuid():N}", assigneeEmployeeId: 2, customerId: 1);
+
+        // Org 2's own customer (id=2), claiming Org 1 in the header — fails
+        // the customer/organization match before ever reaching the
+        // "is this the linked customer" check.
+        var wrongOrgCustomerClient = _factory.CreateClient();
+        wrongOrgCustomerClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        wrongOrgCustomerClient.DefaultRequestHeaders.Add("X-Customer-Id", "2");
+
+        var approveResponse = await wrongOrgCustomerClient.PostAsync($"/api/workorders/{completed.Id}/approve", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, approveResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Approve_OnWorkOrderWithNoLinkedCustomer_ReturnsForbidden()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var completed = await CompleteFullLifecycleWithCustomerAsync(org1AdminClient, org1MemberClient, $"No-Customer-Linked-{Guid.NewGuid():N}", assigneeEmployeeId: 2, customerId: null);
+
+        var org1CustomerClient = _factory.CreateClient();
+        org1CustomerClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1CustomerClient.DefaultRequestHeaders.Add("X-Customer-Id", "1");
+
+        var approveResponse = await org1CustomerClient.PostAsync($"/api/workorders/{completed.Id}/approve", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, approveResponse.StatusCode);
+    }
+
+    // Deliberately links the RIGHT customer (id=1) but stops at InProgress,
+    // never Completed — isolates the state-check specifically, the same
+    // discipline as Day 41's Assign_WorkOrderFromAnotherOrganization test
+    // (use the correct actor so only the check actually under test can fail).
+    [Fact]
+    public async Task Approve_BeforeCompleted_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+
+        var createResponse = await org1AdminClient.PostAsJsonAsync("/api/workorders", new { Title = $"Not-Completed-Yet-{Guid.NewGuid():N}", CustomerId = 1 });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+        await org1AdminClient.PostAsJsonAsync($"/api/workorders/{created!.Id}/assign", new { EmployeeId = 2 });
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        await org1MemberClient.PostAsync($"/api/workorders/{created.Id}/start", null); // now InProgress, not Completed
+
+        var org1CustomerClient = _factory.CreateClient();
+        org1CustomerClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1CustomerClient.DefaultRequestHeaders.Add("X-Customer-Id", "1"); // the correct, linked customer
+
+        var approveResponse = await org1CustomerClient.PostAsync($"/api/workorders/{created.Id}/approve", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, approveResponse.StatusCode);
+    }
+
     private record EmployeeDto(int Id, string Name, int OrganizationId, int Role);
 
-    private record WorkOrderDto(int Id, string Title, int OrganizationId, int Status, int? AssignedEmployeeId, IReadOnlyList<string> EvidenceNotes);
+    private record WorkOrderDto(int Id, string Title, int OrganizationId, int Status, int? AssignedEmployeeId, IReadOnlyList<string> EvidenceNotes, int? CustomerId, bool CustomerApproved);
 }

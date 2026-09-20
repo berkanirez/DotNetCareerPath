@@ -18,6 +18,13 @@ internal class WorkOrder
     // placeholder for something already half-built.
     public List<string> EvidenceNotes { get; } = new();
 
+    // Day 47: CustomerId is a plain int — NOT a reference to the Customers
+    // module's Customer type, same ADR 0002 reasoning as OrganizationId and
+    // AssignedEmployeeId. Optional: not every work order needs a customer
+    // on record today.
+    public int? CustomerId { get; set; }
+    public bool CustomerApproved { get; set; }
+
     public WorkOrder(string title, int organizationId, WorkOrderStatus status)
     {
         Title = title;

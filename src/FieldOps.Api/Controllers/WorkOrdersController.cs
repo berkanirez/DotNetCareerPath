@@ -1,5 +1,6 @@
 using FieldOps.Api.Application;
 using FieldOps.Api.Models;
+using FieldOps.Modules.Customers;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.WorkOrders;
 using Microsoft.AspNetCore.Mvc;
@@ -19,15 +20,18 @@ public class WorkOrdersController : ControllerBase
 {
     private readonly IWorkOrderDirectory _workOrderDirectory;
     private readonly IEmployeeDirectory _employeeDirectory;
+    private readonly ICustomerDirectory _customerDirectory;
     private readonly WorkOrderAssignmentService _workOrderAssignmentService;
 
     public WorkOrdersController(
         IWorkOrderDirectory workOrderDirectory,
         IEmployeeDirectory employeeDirectory,
+        ICustomerDirectory customerDirectory,
         WorkOrderAssignmentService workOrderAssignmentService)
     {
         _workOrderDirectory = workOrderDirectory;
         _employeeDirectory = employeeDirectory;
+        _customerDirectory = customerDirectory;
         _workOrderAssignmentService = workOrderAssignmentService;
     }
 
@@ -62,7 +66,20 @@ public class WorkOrdersController : ControllerBase
             return membershipError;
         }
 
-        var workOrder = _workOrderDirectory.Create(request.Title, organizationId!.Value);
+        // Day 47: same generic "does not exist" hiding pattern as work
+        // order/employee lookups elsewhere this week — a customer that
+        // doesn't exist and one that belongs to another organization are
+        // indistinguishable to the caller.
+        if (request.CustomerId is not null)
+        {
+            var customer = _customerDirectory.GetById(request.CustomerId.Value);
+            if (customer is null || customer.OrganizationId != organizationId)
+            {
+                return BadRequest($"Customer {request.CustomerId} does not exist.");
+            }
+        }
+
+        var workOrder = _workOrderDirectory.Create(request.Title, organizationId!.Value, request.CustomerId);
         var dto = ToDto(workOrder);
         return StatusCode(StatusCodes.Status201Created, dto);
     }
@@ -304,6 +321,55 @@ public class WorkOrdersController : ControllerBase
         return Ok(ToDto(updated));
     }
 
+    // Day 47: a FOURTH kind of authorization actor — not an Employee at
+    // all, unlike every check so far (tenant membership, role, ownership).
+    // X-Customer-Id is the same deliberate simplification class as
+    // X-Employee-Id (Day 35): a plain, unverified, client-stated header —
+    // no real customer portal/authentication exists yet. "Is this customer
+    // actually the one linked to this work order" mirrors Day 42's
+    // ownership shape, just for a different identity type entirely.
+    [HttpPost("{id}/approve")]
+    public ActionResult<WorkOrderDto> Approve(
+        int id,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Customer-Id")] int? actingCustomerId)
+    {
+        if (organizationId is null)
+        {
+            return BadRequest("X-Organization-Id header is required.");
+        }
+
+        if (actingCustomerId is null)
+        {
+            return BadRequest("X-Customer-Id header is required.");
+        }
+
+        var actingCustomer = _customerDirectory.GetById(actingCustomerId.Value);
+        if (actingCustomer is null || actingCustomer.OrganizationId != organizationId)
+        {
+            return BadRequest($"Customer {actingCustomerId} does not exist.");
+        }
+
+        var workOrder = _workOrderDirectory.GetById(id);
+        if (workOrder is null || workOrder.OrganizationId != organizationId)
+        {
+            return BadRequest($"Work order {id} does not exist.");
+        }
+
+        if (workOrder.CustomerId != actingCustomerId)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "Only this work order's own customer can approve it.");
+        }
+
+        var updated = _workOrderDirectory.Approve(id);
+        if (updated is null)
+        {
+            return BadRequest($"Work order {id} must be Completed before it can be approved.");
+        }
+
+        return Ok(ToDto(updated));
+    }
+
     // Day 43: extracted for Assign specifically. Day 44 moved Reassign onto
     // ValidateIsAdminOrAssignee below (a different, combined rule), so this
     // one now has a single caller again — kept as its own named method
@@ -396,7 +462,7 @@ public class WorkOrdersController : ControllerBase
     }
 
     private static WorkOrderDto ToDto(WorkOrderSummary workOrder) =>
-        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId, workOrder.EvidenceNotes);
+        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId, workOrder.EvidenceNotes, workOrder.CustomerId, workOrder.CustomerApproved);
 
     // Shared by both actions today — unlike EmployeesController (Day 39),
     // where the identical duplication between Create/GetAll was deliberately

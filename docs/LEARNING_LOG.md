@@ -1718,3 +1718,39 @@ Copy this template for each new entry:
 **Independent task:** Determine (by reading) whether a `Completed` work order can currently be reopened, and give an opinion. Answered correctly, unprompted: not currently possible, and it should be. Implemented same session as `Reopen` — during which the real cross-org bug above was found and fixed before being shipped.
 
 **Next session:** Phase 3, Week 9 — likely file evidence or customer approval, the two remaining roadmap topics for this week; exact scope to be finalized at the start of the session.
+
+### 2026-09-19 — Phase 3, Week 9, Day 46
+
+**Topic:** File evidence — the first of Week 9's two remaining roadmap topics.
+
+**Problem solved:** A work order could reach `Completed` with zero record of what was actually done. Added `POST /api/workorders/{id}/evidence`: the work order's assignee (not an Admin) attaches a text note, standing in for a real photo/file reference — no upload/storage infrastructure exists yet (Week 10-11's territory), explicitly flagged as a demo simplification rather than a half-built feature.
+
+**What I learned:** A concrete sign that this week's ownership-authorization ordering lesson (Day 42) is now internalized rather than freshly re-derived each time: while writing `AddEvidence_OnUnassignedWorkOrder_ReturnsForbidden`, I named and asserted it as `Forbidden` (not `BadRequest`) *before* running it, correctly predicting that a `null` `AssignedEmployeeId` always fails ownership before the module's own `Open`-state rule is ever reached — the same mechanism as Day 42's `Start_OnUnassignedWorkOrder_ReturnsForbidden`. The prediction held on the first run.
+
+**What I implemented:**
+* `WorkOrder`/`WorkOrderSummary` gained `EvidenceNotes` (a plain string list).
+* `IWorkOrderDirectory.AddEvidence(workOrderId, note)` — the only mutation whose rule is "must NOT be `Open`" rather than "must be exactly one specific prior state," since evidence makes sense in `Assigned`, `InProgress`, or `Completed` alike.
+* `WorkOrdersController.AddEvidence` — reuses `ValidateOwnership` (Day 42) unchanged, not the combined `ValidateIsAdminOrAssignee` (Day 44): the person attaching evidence must be the one who actually did the work, not a dispatcher.
+* `AddEvidenceRequest` DTO; `WorkOrderDto` extended with `EvidenceNotes`.
+* 3 new integration tests: assignee succeeds, a non-assignee Admin is forbidden, an unassigned work order is forbidden (not bad-request, as predicted).
+
+**Runtime flow:** Request → membership → ownership (assignee only) → `IWorkOrderDirectory.AddEvidence`: rejects only if still `Open`, otherwise appends the note.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 45/45 (42 existing + 3 new).
+* Live curl on a real running instance: the assignee adds a note → `200` with the note reflected in `evidenceNotes`; a non-assignee Admin attempt → `403`.
+* Live Red→Green: the module's actual `EvidenceNotes.Add(note)` line commented out → `AddEvidence_ByAssignee_Succeeds` genuinely failed (`Collection: []`, note not found) → restored → 45/45 green.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `9d3c636`): pending confirmation this session.
+
+**Evidence:** A fourth work-order mutation added with zero new authorization-helper duplication (reused `ValidateOwnership` verbatim); a correctly predicted test outcome grounded in an explicitly-cited prior day's mechanism, verified rather than assumed; commit (`9d3c636`, pushed).
+
+**Mistakes or difficulties:** None.
+
+**Production considerations:** Evidence is text-only, no real file/photo storage. No limit on how many notes a single work order can accumulate — flagged as today's independent task, not yet explored.
+
+**Understanding questions and answers:** Berkan explicitly declined to answer today's three understanding questions and the independent task ("soruları bu seferlik cevaplamıcam ... direkt diğer güne geçelim"), recorded honestly rather than fabricated — mirroring Day 31's precedent for a declined end-of-session Q&A.
+
+**Independent task:** Declined this session (see above) — not answered, not completed.
+
+**Next session:** Phase 3, Week 9 — likely customer approval, the last remaining Week 9 roadmap topic; exact scope to be finalized at the start of the session.

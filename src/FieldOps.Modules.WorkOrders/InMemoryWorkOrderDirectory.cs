@@ -24,9 +24,9 @@ internal class InMemoryWorkOrderDirectory : IWorkOrderDirectory
         return workOrder is null ? null : ToSummary(workOrder);
     }
 
-    public WorkOrderSummary Create(string title, int organizationId)
+    public WorkOrderSummary Create(string title, int organizationId, int? customerId = null)
     {
-        var workOrder = new WorkOrder(title, organizationId, WorkOrderStatus.Open) { Id = _nextId++ };
+        var workOrder = new WorkOrder(title, organizationId, WorkOrderStatus.Open) { Id = _nextId++, CustomerId = customerId };
         _workOrders.Add(workOrder);
         return ToSummary(workOrder);
     }
@@ -117,6 +117,18 @@ internal class InMemoryWorkOrderDirectory : IWorkOrderDirectory
         return ToSummary(workOrder);
     }
 
+    public WorkOrderSummary? Approve(int workOrderId)
+    {
+        var workOrder = _workOrders.FirstOrDefault(w => w.Id == workOrderId);
+        if (workOrder is null || workOrder.Status != WorkOrderStatus.Completed)
+        {
+            return null;
+        }
+
+        workOrder.CustomerApproved = true;
+        return ToSummary(workOrder);
+    }
+
     private static WorkOrderSummary ToSummary(WorkOrder workOrder) =>
-        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId, workOrder.EvidenceNotes.AsReadOnly());
+        new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId, workOrder.EvidenceNotes.AsReadOnly(), workOrder.CustomerId, workOrder.CustomerApproved);
 }

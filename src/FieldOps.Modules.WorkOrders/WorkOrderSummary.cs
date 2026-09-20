@@ -1,3 +1,3 @@
 namespace FieldOps.Modules.WorkOrders;
 
-public record WorkOrderSummary(int Id, string Title, int OrganizationId, WorkOrderStatus Status, int? AssignedEmployeeId, IReadOnlyList<string> EvidenceNotes);
+public record WorkOrderSummary(int Id, string Title, int OrganizationId, WorkOrderStatus Status, int? AssignedEmployeeId, IReadOnlyList<string> EvidenceNotes, int? CustomerId, bool CustomerApproved);

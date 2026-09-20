@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 9 — in progress (Week 8 complete)
-* **Day:** 45 (complete)
+* **Day:** 46 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** The Assign/Reassign/Unassign lifecycle triangle is complete, and `Reopen` (Completed → InProgress, Admin-only) was added from an independent-task follow-up. While writing `Reopen`, a real cross-tenant vulnerability was self-discovered and fixed the same session: its first version checked only the acting employee's role, never whether the target work order belonged to their organization at all — live-proven exploit (an Org 1 Admin reopening Org 2's completed work order), closed with a new `ValidateIsAdminForWorkOrder` check, before any test or external review caught it.
+* **Status:** File evidence added (`POST /api/workorders/{id}/evidence`, assignee-only): a text note stands in for a real photo/file reference, explicitly flagged pending Week 10-11's storage infrastructure. Reuses Day 42's `ValidateOwnership` unchanged. A test's expected outcome (`Forbidden`, not `BadRequest`, for an unassigned work order) was correctly predicted before running, based on Day 42's established ownership-before-state-check ordering.
 * **Available study time:** 2 hours/day
-* **Progress:** ~40% (Day 45 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~41% (Day 46 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -355,6 +355,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * `docs/daily-code-notes/day-45.md` created (Turkish), including the self-caught vulnerability's full story.
 * Understanding questions: Q1 (why `Unassign` needs no service) answered correctly, unprompted. Q2 (why disabling `Unassign`'s check produced a clean `200` not a `500`) was unknown, explained — a real null-check vs. a null-forgiving `!`. Q3 (reusing `ValidateIsAdminOrAssignee` unchanged as a continuation of the extraction pattern) answered tersely but correctly.
 * Independent task (can a `Completed` work order be reopened, and should it be?): answered correctly by reading the code, unprompted — not currently possible, and it should be. Implemented same session; the cross-org bug above was found and fixed while building it, before shipping.
+* `WorkOrder`/`WorkOrderSummary` gained `EvidenceNotes` (plain string list — a demo stand-in for real file/photo evidence, no upload/storage infrastructure exists yet). `IWorkOrderDirectory.AddEvidence(workOrderId, note)` added — the only mutation whose rule is "must not be `Open`" rather than one exact prior state.
+* `WorkOrdersController.AddEvidence` added — reuses `ValidateOwnership` (Day 42) unchanged, not the combined `ValidateIsAdminOrAssignee` (Day 44): evidence must come from the person who did the work, not a dispatcher. `AddEvidenceRequest` DTO added; `WorkOrderDto` extended with `EvidenceNotes`.
+* 3 new integration tests. A test's expected outcome was correctly predicted before running: `AddEvidence_OnUnassignedWorkOrder_ReturnsForbidden` (not `BadRequest`), based on Day 42's established mechanism (a `null` `AssignedEmployeeId` always fails ownership before the module's own state rule is reached) — confirmed on first run.
+* Live curl verification: assignee adds a note (`200`, reflected in `evidenceNotes`); non-assignee Admin attempt (`403`).
+* Live Red→Green: the module's actual `EvidenceNotes.Add(note)` line disabled → `AddEvidence_ByAssignee_Succeeds` genuinely failed → restored → 45/45 green.
+* `docs/daily-code-notes/day-46.md` created (Turkish).
+* Understanding questions and independent task: Berkan explicitly declined to answer this session ("soruları bu seferlik cevaplamıcam ... direkt diğer güne geçelim") — recorded honestly, not fabricated, mirroring Day 31's precedent.
 
 ## Decisions on record
 
@@ -380,6 +387,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Continue Phase 3, Week 9, Day 46: likely file evidence or customer approval — the two remaining Week 9 roadmap topics, building on the now-complete work-order lifecycle. Exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Continue Phase 3, Week 9, Day 47: likely customer approval — the last remaining Week 9 roadmap topic. Exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 

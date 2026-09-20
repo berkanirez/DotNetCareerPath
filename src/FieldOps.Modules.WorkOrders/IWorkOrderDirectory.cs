@@ -9,7 +9,13 @@ public interface IWorkOrderDirectory
 {
     IReadOnlyList<WorkOrderSummary> GetAll();
     WorkOrderSummary? GetById(int id);
-    WorkOrderSummary Create(string title, int organizationId);
+
+    // Day 47: customerId is optional and, like organizationId, not
+    // validated here — this module has no reference to
+    // FieldOps.Modules.Customers at all (ADR 0002). The host
+    // (WorkOrdersController) checks the customer exists and belongs to the
+    // right organization before ever calling this.
+    WorkOrderSummary Create(string title, int organizationId, int? customerId = null);
 
     // Deliberately does NOT validate that employeeId refers to a real
     // Employee, or that it belongs to the same organization as this work
@@ -60,4 +66,11 @@ public interface IWorkOrderDirectory
     // valid, unlike the other mutations which each need one exact prior
     // state. Returns null if the work order doesn't exist or is still Open.
     WorkOrderSummary? AddEvidence(int workOrderId, string note);
+
+    // Day 47: only enforces the state-machine invariant (must be Completed)
+    // — same split as Start/Complete/Reassign/Unassign: "is the caller
+    // actually the linked customer" is a host-level check (the host has
+    // ICustomerDirectory, this module never will). Returns null if the
+    // work order doesn't exist or isn't Completed.
+    WorkOrderSummary? Approve(int workOrderId);
 }
