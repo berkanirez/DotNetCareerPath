@@ -1,11 +1,16 @@
+using FieldOps.Modules.Employees.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FieldOps.Modules.Employees;
 
+// Day 48/ADR 0003: same shape as OrganizationsModule — the host hands over
+// a connection string, never sees EmployeesDbContext or EfEmployeeDirectory.
 public static class EmployeesModule
 {
-    public static IServiceCollection AddEmployeesModule(this IServiceCollection services)
+    public static IServiceCollection AddEmployeesModule(this IServiceCollection services, string connectionString)
     {
-        return services.AddSingleton<IEmployeeDirectory, InMemoryEmployeeDirectory>();
+        services.AddDbContext<EmployeesDbContext>(options => options.UseSqlServer(connectionString));
+        return services.AddScoped<IEmployeeDirectory, EfEmployeeDirectory>();
     }
 }

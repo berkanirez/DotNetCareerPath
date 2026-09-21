@@ -92,6 +92,36 @@ dotnet build RoadmapOS.slnx  → 0 Hata, 0 Uyarı
 
 ---
 
-## Bugünün dersi ve sıradaki gün(ler)
+## 8. İkinci karar — kalan üç modülü de aynı oturumda taşımak
 
-Senin bir soruyla bulduğun gerçek bir dokümantasyon tutarsızlığı, bugünü tamamen değiştirdi — planlanan "Redis kurulumu" yerine "önce Redis'in anlamlı olacağı bir temel kur" oldu. `Employees`, `WorkOrders`, `Customers` modüllerinin de EF Core'a taşınması (muhtemelen birkaç gün sürecek, StockPilot Day 16-19'un aynısı) hâlâ önümüzde — ondan sonra Redis'e gerçek bir anlamla döneceğiz.
+`Organizations`'ı bitirdikten sonra, "her modülü ayrı bir güne yaymayalım, hepsini tek seferde yapıp asıl plana (Redis) dönelim" dedin. Bu, `Employees`, `WorkOrders`, `Customers` modüllerinin de **aynı oturumda** EF Core'a taşınması anlamına geldi — ADR 0003 ve Testcontainers altyapısı zaten kurulu olduğu için bu üçü gerçekten daha hızlı oldu.
+
+**Her modül için tekrarlanan (artık tanıdık) desen:**
+- `Data/<Modül>DbContext.cs` (`internal`, `HasData` ile aynı seed ID'ler)
+- `Data/Ef<Modül>Directory.cs` (mevcut arayüzü birebir uygulayan, `SaveChanges()` çağıran implementasyon)
+- `Data/<Modül>DbContextFactory.cs` (tasarım-zamanı factory)
+- `<Modül>Module.cs` güncellemesi (connection string parametresi)
+- `AssemblyInfo.cs` (`InternalsVisibleTo("FieldOps.Api.Tests")`)
+- Eski `InMemory*Directory.cs` silindi
+- Migration oluşturuldu ve gerçek veritabanına uygulandı
+
+**Bir teknik detay — `WorkOrder.EvidenceNotes` (bir `List<string>`) nasıl saklanıyor:** EF Core'un "primitive collection" desteği (`entity.PrimitiveCollection(...)`), bunu otomatik olarak bir JSON sütununa (`nvarchar`) eşliyor — ayrı bir "Evidence" tablosu gerekmedi. Bunu varsaymadım, migration'ı oluşturup gerçek şemayı `INFORMATION_SCHEMA.COLUMNS` ile kontrol ederek doğruladım.
+
+**`Program.cs`'te küçük bir refactor:** Dört modülün de "connection string'i configürasyondan al, yoksa fırlat" mantığı **birebir aynı** olduğu için, bunu tek satırlık bir yerel fonksiyona (`RequireConnectionString`) çıkardım — bu haftanın "gerçekten aynıysa hemen çıkar" kuralının bir devamı.
+
+**`FieldOpsApiFactory`'nin genişlemesi:** Dört ayrı Docker konteyneri yerine **tek bir** SQL Server konteyneri, dört farklı veritabanı adıyla (`FieldOpsOrganizations`, `FieldOpsEmployees`, `FieldOpsWorkOrders`, `FieldOpsCustomers`) — tıpkı yerel geliştirme ortamının zaten yaptığı gibi (aynı SQL Server örneği, farklı veritabanları). `SqlConnectionStringBuilder` ile container'ın bağlantı dizesinin sadece veritabanı adını değiştirdim.
+
+**Canlı uçtan-uca kanıt (gerçek uygulama, gerçek veritabanları):**
+```
+1) Calisan listesi -> Employees veritabanindan okundu
+2) Yeni calisan olustur -> id: 6 (seed edilen 1-5'ten sonra IDENTITY dogru devam etti)
+3) Is emri olustur + ata + kanit ekle -> hepsi WorkOrders veritabaninda kalici, JSON kanit notu dogru calisti
+```
+
+`dotnet test FieldOps.slnx` → **49/49**, artık dördü de gerçek Testcontainers veritabanlarına karşı, ~20 saniyede (öncesinde <1 saniye).
+
+---
+
+## Bugünün dersi ve sıradaki gün
+
+Senin bir soruyla bulduğun gerçek bir dokümantasyon tutarsızlığı, bugünü tamamen değiştirdi — planlanan "Redis kurulumu" yerine "önce Redis'in anlamlı olacağı gerçek bir temel kur" oldu, ve senin ikinci kararınla bu temel **tek bir oturumda** tüm dört modülü kapsayacak şekilde tamamlandı. Artık FieldOps'un tamamı gerçek, kalıcı, test edilebilir bir persistence katmanına sahip — Redis'e (Week 10) gerçek bir anlamla dönebiliriz.

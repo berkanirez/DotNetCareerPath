@@ -1,0 +1,40 @@
+using FieldOps.Modules.Employees.Domain;
+using Microsoft.EntityFrameworkCore;
+
+namespace FieldOps.Modules.Employees.Data;
+
+// internal, replacing InMemoryEmployeeDirectory (Day 37) as
+// IEmployeeDirectory's real implementation. Ids for newly-created employees
+// (Create) come from SQL Server's own IDENTITY column, continuing after the
+// 5 explicitly-seeded Ids (HasData) — same as EfOrganizationDirectory
+// (Day 48), still deliberately synchronous.
+internal class EfEmployeeDirectory : IEmployeeDirectory
+{
+    private readonly EmployeesDbContext _dbContext;
+
+    public EfEmployeeDirectory(EmployeesDbContext dbContext)
+    {
+        _dbContext = dbContext;
+    }
+
+    public IReadOnlyList<EmployeeSummary> GetAll()
+    {
+        return _dbContext.Employees
+            .Select(e => new EmployeeSummary(e.Id, e.Name, e.OrganizationId, e.Role))
+            .ToList();
+    }
+
+    public EmployeeSummary? GetById(int id)
+    {
+        var employee = _dbContext.Employees.FirstOrDefault(e => e.Id == id);
+        return employee is null ? null : new EmployeeSummary(employee.Id, employee.Name, employee.OrganizationId, employee.Role);
+    }
+
+    public EmployeeSummary Create(string name, int organizationId, EmployeeRole role)
+    {
+        var employee = new Employee(name, organizationId, role);
+        _dbContext.Employees.Add(employee);
+        _dbContext.SaveChanges();
+        return new EmployeeSummary(employee.Id, employee.Name, employee.OrganizationId, employee.Role);
+    }
+}

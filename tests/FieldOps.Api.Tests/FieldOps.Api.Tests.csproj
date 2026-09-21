@@ -23,6 +23,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FieldOps.Api\FieldOps.Api.csproj" />
     <ProjectReference Include="..\..\src\FieldOps.Modules.Organizations\FieldOps.Modules.Organizations.csproj" />
+    <ProjectReference Include="..\..\src\FieldOps.Modules.Employees\FieldOps.Modules.Employees.csproj" />
+    <ProjectReference Include="..\..\src\FieldOps.Modules.WorkOrders\FieldOps.Modules.WorkOrders.csproj" />
+    <ProjectReference Include="..\..\src\FieldOps.Modules.Customers\FieldOps.Modules.Customers.csproj" />
   </ItemGroup>
 
 </Project>

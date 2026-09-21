@@ -13,16 +13,19 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 // The host installs each module through its own extension method — it never
-// names either module's internal concrete implementation class directly.
-// Day 48/ADR 0003: Organizations now owns its own database, separate from
-// every other module's — the host only ever hands over a connection string,
-// never touches OrganizationsDbContext itself.
-var organizationsConnectionString = builder.Configuration.GetConnectionString("FieldOpsOrganizationsDb")
-    ?? throw new InvalidOperationException("Missing connection string: FieldOpsOrganizationsDb");
-builder.Services.AddOrganizationsModule(organizationsConnectionString);
-builder.Services.AddEmployeesModule();
-builder.Services.AddWorkOrdersModule();
-builder.Services.AddCustomersModule();
+// names any module's internal concrete implementation class (or its
+// DbContext) directly. Day 48/ADR 0003: every module now owns its own
+// database; the host only ever hands over a connection string. The
+// "get-connection-string-or-throw" logic is genuinely identical for all
+// four calls (this week's "extract when it's really the same" rule), so it
+// gets a tiny local function instead of being repeated four times.
+string RequireConnectionString(string name) =>
+    builder.Configuration.GetConnectionString(name) ?? throw new InvalidOperationException($"Missing connection string: {name}");
+
+builder.Services.AddOrganizationsModule(RequireConnectionString("FieldOpsOrganizationsDb"));
+builder.Services.AddEmployeesModule(RequireConnectionString("FieldOpsEmployeesDb"));
+builder.Services.AddWorkOrdersModule(RequireConnectionString("FieldOpsWorkOrdersDb"));
+builder.Services.AddCustomersModule(RequireConnectionString("FieldOpsCustomersDb"));
 
 // Application-layer service: cross-module orchestration that belongs to the
 // host (Day 34), not inside either module or directly inside a controller.
