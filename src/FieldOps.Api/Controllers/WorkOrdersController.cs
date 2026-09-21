@@ -102,6 +102,7 @@ public class WorkOrdersController : ControllerBase
         }
 
         var workOrder = _workOrderDirectory.Create(request.Title, organizationId!.Value, request.CustomerId);
+        _workOrderReportService.InvalidateCache(organizationId.Value);
         var dto = ToDto(workOrder);
         return StatusCode(StatusCodes.Status201Created, dto);
     }
@@ -135,6 +136,7 @@ public class WorkOrdersController : ControllerBase
             return BadRequest(result.Error);
         }
 
+        _workOrderReportService.InvalidateCache(organizationId!.Value);
         return Ok(ToDto(result.WorkOrder!));
     }
 
@@ -204,6 +206,7 @@ public class WorkOrdersController : ControllerBase
             return BadRequest($"Work order {id} must be Assigned or InProgress before it can be unassigned.");
         }
 
+        _workOrderReportService.InvalidateCache(organizationId!.Value);
         return Ok(ToDto(updated));
     }
 
@@ -247,6 +250,7 @@ public class WorkOrdersController : ControllerBase
             return BadRequest($"Work order {id} must be Completed before it can be reopened.");
         }
 
+        _workOrderReportService.InvalidateCache(organizationId!.Value);
         return Ok(ToDto(updated));
     }
 
@@ -280,6 +284,7 @@ public class WorkOrdersController : ControllerBase
             return BadRequest($"Work order {id} must be Assigned before it can be started.");
         }
 
+        _workOrderReportService.InvalidateCache(organizationId!.Value);
         return Ok(ToDto(updated));
     }
 
@@ -307,6 +312,7 @@ public class WorkOrdersController : ControllerBase
             return BadRequest($"Work order {id} must be InProgress before it can be completed.");
         }
 
+        _workOrderReportService.InvalidateCache(organizationId!.Value);
         return Ok(ToDto(updated));
     }
 

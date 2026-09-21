@@ -48,4 +48,13 @@ public class WorkOrderReportService
         db.StringSet(cacheKey, JsonSerializer.Serialize(report), CacheDuration);
         return report;
     }
+
+    // Day 49: active invalidation — called by every controller action that
+    // changes a work order's Status (the only thing this report counts).
+    // Reassign/Approve never touch Status, so they never call this.
+    public void InvalidateCache(int organizationId)
+    {
+        var db = _redis.GetDatabase();
+        db.KeyDelete($"workorders:report:{organizationId}");
+    }
 }

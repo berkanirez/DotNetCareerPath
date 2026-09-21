@@ -52,7 +52,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | ASP.NET Core | 4 | Phase 1–4 | Working endpoint, integration test | 3 | In Progress |
 | MVC | 3 | Phase 1 | Working user flow | 3 | In Progress |
 | Controller-based Web API | 4 | Phase 2 | Working endpoint, integration test | 2 | In Progress |
-| EF Core | 4 | Phase 1–4 | Unit test, integration test, commit | 3 | In Progress |
+| EF Core | 4 | Phase 1–4 | Unit test, integration test, commit | 4 | In Progress |
 | SQL Server | 3 | Phase 1–4 | Working endpoint, debugging note | 3 | In Progress |
 | PostgreSQL | 1 | Phase 4–5 (comparison only) | English technical explanation | 0 | Planned |
 | LINQ | 3 | Phase 1–2 | Unit test, commit | 3 | In Progress |
@@ -70,7 +70,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | TDD | 2 | Phase 1 | Unit test, commit | 1 | In Progress |
 | Integration testing | 3 | Phase 2–4 | Integration test | 0 | Planned |
 | Test automation | 3 | Phase 2, 6 | Integration test, deployment | 0 | Planned |
-| Redis | 3 | Phase 3 | Working endpoint, debugging note | 0 | Planned |
+| Redis | 3 | Phase 3 | Working endpoint, debugging note | 2 | In Progress |
 | Elasticsearch | 2 | Phase 4 | Working endpoint | 0 | Planned |
 | RabbitMQ | 3 | Phase 4 | Working user flow, debugging note | 0 | Planned |
 | Kafka concepts | 1 | Phase 4 (conceptual only) | English technical explanation | 0 | Planned |
