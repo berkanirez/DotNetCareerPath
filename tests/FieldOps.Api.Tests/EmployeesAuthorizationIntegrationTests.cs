@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace FieldOps.Api.Tests;
 
@@ -10,18 +9,19 @@ namespace FieldOps.Api.Tests;
 // [FromHeader]'s behavior, since that's a middleware/model-binding concern
 // EmployeeApplicationServiceTests structurally cannot see.
 //
-// Note: IOrganizationDirectory/IEmployeeDirectory are registered Singleton,
-// so their in-memory state is SHARED across every test in this class (one
-// WebApplicationFactory instance backs the whole class). Each test uses a
-// unique employee name to avoid any test depending on another's leftover
-// data — the same discipline StockPilot's Day 27 unique-SKU convention used,
-// for a different underlying reason (shared memory here, a shared real
-// database there).
-public class EmployeesAuthorizationIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+// Note: IEmployeeDirectory is registered Singleton, so its in-memory state
+// is SHARED across every test in this class (one factory instance backs the
+// whole class). IOrganizationDirectory (Day 48) is now EF-backed against a
+// real, disposable Testcontainers SQL Server (FieldOpsApiFactory) — also
+// shared across the class, for a different reason (a real database, not
+// shared memory). Each test uses a unique employee name to avoid any test
+// depending on another's leftover data — the same discipline StockPilot's
+// Day 27 unique-SKU convention used.
+public class EmployeesAuthorizationIntegrationTests : IClassFixture<FieldOpsApiFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly FieldOpsApiFactory _factory;
 
-    public EmployeesAuthorizationIntegrationTests(WebApplicationFactory<Program> factory)
+    public EmployeesAuthorizationIntegrationTests(FieldOpsApiFactory factory)
     {
         _factory = factory;
     }

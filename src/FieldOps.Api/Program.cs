@@ -14,7 +14,12 @@ builder.Services.AddOpenApi();
 
 // The host installs each module through its own extension method — it never
 // names either module's internal concrete implementation class directly.
-builder.Services.AddOrganizationsModule();
+// Day 48/ADR 0003: Organizations now owns its own database, separate from
+// every other module's — the host only ever hands over a connection string,
+// never touches OrganizationsDbContext itself.
+var organizationsConnectionString = builder.Configuration.GetConnectionString("FieldOpsOrganizationsDb")
+    ?? throw new InvalidOperationException("Missing connection string: FieldOpsOrganizationsDb");
+builder.Services.AddOrganizationsModule(organizationsConnectionString);
 builder.Services.AddEmployeesModule();
 builder.Services.AddWorkOrdersModule();
 builder.Services.AddCustomersModule();

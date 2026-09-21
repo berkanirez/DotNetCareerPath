@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace FieldOps.Api.Tests;
 
@@ -8,11 +7,17 @@ namespace FieldOps.Api.Tests;
 // EmployeesController arrived at only after three live-found vulnerabilities
 // (Days 35, 38, 39) — here it's correct from the start. These tests prove
 // that directly, rather than proving a fix for something that was broken.
-public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+//
+// Day 48: uses FieldOpsApiFactory (a real, disposable Testcontainers SQL
+// Server, mirroring StockPilot Day 28) instead of a plain
+// WebApplicationFactory<Program> — Organizations is now EF-backed, and
+// employee-creation calls in these tests go through EmployeeApplicationService,
+// which checks organization existence via that real database.
+public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApiFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly FieldOpsApiFactory _factory;
 
-    public WorkOrdersAuthorizationIntegrationTests(WebApplicationFactory<Program> factory)
+    public WorkOrdersAuthorizationIntegrationTests(FieldOpsApiFactory factory)
     {
         _factory = factory;
     }

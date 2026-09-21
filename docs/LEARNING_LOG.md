@@ -1754,3 +1754,37 @@ Copy this template for each new entry:
 **Independent task:** Declined this session (see above) — not answered, not completed.
 
 **Next session:** Phase 3, Week 9 — likely customer approval, the last remaining Week 9 roadmap topic; exact scope to be finalized at the start of the session.
+
+### 2026-09-20 — Phase 3, Week 9, Day 47
+
+**Topic:** Customer approval — Week 9's last remaining roadmap topic, closing the week. Introduces a fourth authorization actor: `Customer`, an external party, not an internal `Employee` at all.
+
+**Problem solved:** `Completed` reflected only the assignee's own claim, with no external confirmation. Added `FieldOps.Modules.Customers` (mirroring `Organizations`'s Day 32 pattern exactly, seeded with one customer per organization) and `POST /api/workorders/{id}/approve`: the specific customer a work order is linked to (via an optional `CustomerId` set at creation) can mark it `CustomerApproved` once it's `Completed`.
+
+**What I implemented:**
+* `FieldOps.Modules.Customers`: `Customer` (internal), `CustomerSummary`, `ICustomerDirectory` (`GetAll`/`GetById` only — no `Create` endpoint yet, deliberately out of scope), `InMemoryCustomerDirectory` (seeded, Id 1→Org1, Id 2→Org2), `CustomersModule`.
+* `WorkOrder`/`WorkOrderSummary` gained `CustomerId` (plain int, ADR 0002 reasoning) and `CustomerApproved`. `CreateWorkOrderRequest` gained an optional `CustomerId` in the request body (not a header) — it describes the resource being created, the same category as `Title`, not the caller's own identity/tenant context the way `X-Organization-Id`/`X-Employee-Id` are.
+* `IWorkOrderDirectory.Approve(workOrderId)` — module-owned invariant (`Completed` only), same split as every other mutation this week.
+* `WorkOrdersController.Approve`: a new header, `X-Customer-Id` (same deliberate simplification class as `X-Employee-Id`), validates the customer exists and belongs to the org, then checks `workOrder.CustomerId == actingCustomerId` — structurally identical in shape to Day 42's ownership check, but for `ICustomerDirectory` instead of `IEmployeeDirectory`, kept as its own method rather than merged into `ValidateOwnership`.
+* 4 new integration tests: linked customer approves (success), another organization's customer rejected, a work order with no linked customer rejected, and — isolated the same way as Day 41's cross-org test — the *correct* customer attempting approval before `Completed` is reached, proving the state check specifically.
+
+**Runtime flow:** `Create` (optional `CustomerId`, org-validated) → full lifecycle to `Completed` → `Approve`: customer identity + org check → "is this the linked customer" check → module's `Completed`-only state check → `CustomerApproved = true`.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 49/49 (45 existing + 4 new).
+* Live curl on a real running instance: linked customer approves → `200`, `customerApproved: true`; another organization's customer → `400` (generic "does not exist," same information-hiding principle as the rest of this week).
+* Live Red→Green: the "is this the linked customer" check disabled → `Approve_OnWorkOrderWithNoLinkedCustomer_ReturnsForbidden` genuinely failed (`Expected: Forbidden, Actual: OK`) → restored → 49/49 green.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both unaffected, 0 errors/warnings.
+* GitHub Actions (commit `1265056`): all steps `success`.
+
+**Evidence:** A fifth module proving the `Organizations`-established internal-domain/public-DTO/module-DI pattern generalizes; a fourth distinct authorization actor type added to the three established this week (tenant, role, employee-ownership), reusing the same shape without forcing a shared abstraction across genuinely different identity types; commit (`1265056`, pushed, CI green). **Week 9's full roadmap topic list (work-order lifecycle, assignment, scheduling, status transitions, file evidence, customer approval, business-rule tests) is now closed.**
+
+**Mistakes or difficulties:** None.
+
+**Production considerations:** No real customer authentication/portal — `X-Customer-Id` is a plain, client-stated header. No `Create` endpoint for customers yet, only seed data.
+
+**Understanding questions and answers:** Berkan answered "bilmiyorum" to all three and asked Claude to answer directly ("sen söyle"). Q1 (real difference between `Customers` and `Organizations` despite identical code shape): explained — `Organization` is the tenant boundary itself, referenced by everything; `Customer` belongs to an organization but is an external party the org serves, referenced only by `WorkOrder`, structurally similar to `Employee`'s shape but semantically its opposite (does work vs. receives/approves work). Q2 (why `ValidateOwnership` wasn't extended for the customer check): explained — same shape, different concrete identity type and directory (`IEmployeeDirectory` vs `ICustomerDirectory`); forcing them together would be the Day 39/40 "superficially similar, not actually the same" trap. Q3 (why `CustomerId` is in the request body, not a header, unlike `OrganizationId`): explained — headers carry the caller's own identity/authorization context (Day 35's lesson: this must never be freely client-stated in a way that grants access), while `CustomerId` is descriptive data about the resource being created, the same category as `Title`.
+
+**Independent task:** Declined this session ("sonraki güne geçelim" without answering) — not completed, recorded honestly.
+
+**Next session:** Phase 3 — Week 9 is fully closed. Next session begins Week 10 (Redis, cache-aside, cache invalidation, background services, scheduled jobs, notification abstraction, audit logs, rate limiting, idempotency) per `docs/ROADMAP.md`; exact Day 48 scope to be finalized at the start of the session.

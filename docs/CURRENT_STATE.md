@@ -6,12 +6,12 @@ This file reflects the actual current state of the learning journey. It must alw
 
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
-* **Week:** 9 — in progress (Week 8 complete)
-* **Day:** 46 (complete)
+* **Week:** 9 — **complete**
+* **Day:** 47 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** File evidence added (`POST /api/workorders/{id}/evidence`, assignee-only): a text note stands in for a real photo/file reference, explicitly flagged pending Week 10-11's storage infrastructure. Reuses Day 42's `ValidateOwnership` unchanged. A test's expected outcome (`Forbidden`, not `BadRequest`, for an unassigned work order) was correctly predicted before running, based on Day 42's established ownership-before-state-check ordering.
+* **Status:** Customer approval added (`POST /api/workorders/{id}/approve`): a new `FieldOps.Modules.Customers` module (mirroring `Organizations`'s pattern exactly) plus a fourth authorization actor type — `Customer`, an external party, not an `Employee` at all — checked with the same shape as Day 42's ownership rule but a genuinely different identity/directory. **Week 9's full roadmap topic list (lifecycle, assignment, status transitions, file evidence, customer approval) is now closed.**
 * **Available study time:** 2 hours/day
-* **Progress:** ~41% (Day 46 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~43% (Day 47 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -362,6 +362,15 @@ This file reflects the actual current state of the learning journey. It must alw
 * Live Red→Green: the module's actual `EvidenceNotes.Add(note)` line disabled → `AddEvidence_ByAssignee_Succeeds` genuinely failed → restored → 45/45 green.
 * `docs/daily-code-notes/day-46.md` created (Turkish).
 * Understanding questions and independent task: Berkan explicitly declined to answer this session ("soruları bu seferlik cevaplamıcam ... direkt diğer güne geçelim") — recorded honestly, not fabricated, mirroring Day 31's precedent.
+* `FieldOps.Modules.Customers` added — mirrors `Organizations`'s Day 32 pattern exactly: `Customer` (internal), `CustomerSummary`, `ICustomerDirectory` (`GetAll`/`GetById` only, no `Create` yet), `InMemoryCustomerDirectory` (seeded, one customer per organization).
+* `WorkOrder`/`WorkOrderSummary` gained `CustomerId` (plain int, ADR 0002) and `CustomerApproved`. `CreateWorkOrderRequest` gained an optional `CustomerId` in the request body — describes the resource being created (like `Title`), not the caller's own identity/tenant context.
+* `IWorkOrderDirectory.Approve(workOrderId)` added — module-owned invariant (`Completed` only). `WorkOrdersController.Approve` added — a new `X-Customer-Id` header (same simplification class as `X-Employee-Id`), FieldOps's fourth authorization actor type (Customer, not Employee), structurally identical in shape to Day 42's ownership check but a genuinely different identity/directory, kept as its own method rather than merged into `ValidateOwnership`.
+* 4 new integration tests, including one isolated the same way as Day 41's cross-org test (the *correct* customer, but before `Completed`, to prove the state check specifically). Live Red→Green: the customer-link check disabled → the no-linked-customer test genuinely failed → restored → 49/49 green.
+* Live curl verification: linked customer approves (`200`, `customerApproved: true`); another organization's customer rejected (`400`, generic message).
+* `docs/daily-code-notes/day-47.md` created (Turkish).
+* Understanding questions: Berkan answered "bilmiyorum" to all three and asked Claude to answer directly. Q1 (real Customers-vs-Organizations difference despite identical code shape) explained: `Organization` is the tenant boundary itself; `Customer` is an external party the org serves, referenced only by `WorkOrder`. Q2 (why the customer check wasn't merged into `ValidateOwnership`) explained: same shape, different identity type/directory — the Day 39/40 "superficially similar, not actually the same" trap. Q3 (why `CustomerId` is body, not header, unlike `OrganizationId`) explained: headers carry authorization context, `CustomerId` is resource data.
+* Independent task (who should be able to create customers, and what fields would be needed): declined this session, not answered.
+* **Week 9 is complete.** Days 40-47 covered the full roadmap topic list: work-order lifecycle (Day 40), assignment (Day 41), status transitions (Day 42), reassignment/unassignment/reopening (Days 43-45), file evidence (Day 46), and customer approval (Day 47) — five modules now proven to follow the same internal-domain/public-DTO/module-DI pattern, and four distinct authorization actor types (tenant, role, employee-ownership, customer) established through real, live-verified code.
 
 ## Decisions on record
 
@@ -387,6 +396,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Continue Phase 3, Week 9, Day 47: likely customer approval — the last remaining Week 9 roadmap topic. Exact scope to be finalized at the start of the session, per the standing planning protocol.
+2. Begin Phase 3, **Week 10** (Redis, cache-aside, cache invalidation, background services, scheduled jobs, notification abstraction, audit logs, rate limiting, idempotency), Day 48: exact scope to be finalized at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 

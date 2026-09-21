@@ -47,8 +47,11 @@ jobs:
       - name: Test RoadmapOS
         run: dotnet test RoadmapOS.slnx --no-build
 
-      # FieldOps's tests (Day 34) are pure in-memory fakes with no external
-      # dependency at all — no Docker/database consideration needed here.
+      # FieldOps's integration tests (Day 48) spin up their own
+      # Testcontainers-managed SQL Server for the Organizations module,
+      # exactly like StockPilot's above — GitHub's ubuntu-latest runners
+      # already have Docker available, so no extra database setup is needed
+      # here either.
       - name: Restore FieldOps
         run: dotnet restore FieldOps.slnx
 
