@@ -22,17 +22,39 @@ public class WorkOrdersController : ControllerBase
     private readonly IEmployeeDirectory _employeeDirectory;
     private readonly ICustomerDirectory _customerDirectory;
     private readonly WorkOrderAssignmentService _workOrderAssignmentService;
+    private readonly WorkOrderReportService _workOrderReportService;
 
     public WorkOrdersController(
         IWorkOrderDirectory workOrderDirectory,
         IEmployeeDirectory employeeDirectory,
         ICustomerDirectory customerDirectory,
-        WorkOrderAssignmentService workOrderAssignmentService)
+        WorkOrderAssignmentService workOrderAssignmentService,
+        WorkOrderReportService workOrderReportService)
     {
         _workOrderDirectory = workOrderDirectory;
         _employeeDirectory = employeeDirectory;
         _customerDirectory = customerDirectory;
         _workOrderAssignmentService = workOrderAssignmentService;
+        _workOrderReportService = workOrderReportService;
+    }
+
+    // Day 48 (Redis): the first genuinely expensive-to-repeat read in
+    // FieldOps — now that WorkOrders is EF-backed (Day 48 earlier today),
+    // this is a real SQL query every time, unlike everything before it,
+    // which was reading from memory. Cache-aside via WorkOrderReportService.
+    [HttpGet("report")]
+    public ActionResult<WorkOrderStatusReport> GetStatusReport(
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var report = _workOrderReportService.GetStatusReport(organizationId!.Value);
+        return Ok(report);
     }
 
     [HttpGet]

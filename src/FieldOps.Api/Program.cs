@@ -3,6 +3,7 @@ using FieldOps.Modules.Customers;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.Organizations;
 using FieldOps.Modules.WorkOrders;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,16 @@ builder.Services.AddCustomersModule(RequireConnectionString("FieldOpsCustomersDb
 // host (Day 34), not inside either module or directly inside a controller.
 builder.Services.AddScoped<EmployeeApplicationService>();
 builder.Services.AddScoped<WorkOrderAssignmentService>();
+
+// Day 48 (Redis): registered as a Singleton factory — the actual TCP
+// connection to Redis is only made the first time something resolves
+// IConnectionMultiplexer (WorkOrderReportService, only when the report
+// endpoint is actually called), not eagerly at startup. Existing tests that
+// never call that endpoint never touch Redis at all.
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"]
+    ?? throw new InvalidOperationException("Missing configuration: Redis:ConnectionString");
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+builder.Services.AddScoped<WorkOrderReportService>();
 
 var app = builder.Build();
 

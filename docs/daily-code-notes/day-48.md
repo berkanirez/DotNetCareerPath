@@ -122,6 +122,21 @@ dotnet build RoadmapOS.slnx  → 0 Hata, 0 Uyarı
 
 ---
 
+## 9. Redis — artık gerçekten anlamlı, çünkü altında gerçek bir sorgu var
+
+Persistence tamamlandıktan sonra asıl plana döndük: `GET /api/workorders/report` — bir organizasyonun iş emirlerini duruma göre sayan (Open/Assigned/InProgress/Completed), artık **gerçek bir SQL sorgusuna** dayanan bir rapor uç noktası. Redis'i uydurma bir "yapay olarak yavaş" örnekle değil, gerçek bir veri kaynağıyla devreye soktuk: kalıcı bir Docker Redis konteyneri (`fieldops-redis`) kurduk, `WorkOrderReportService` içinde cache-aside deseni uyguladık (30 saniyelik TTL, `IConnectionMultiplexer`/`IDatabase` doğrudan kullanılarak), ve cache'in gerçekten okunduğunu (rastgele bir "999" değerini elle Redis'e yazıp API'nin onu döndürdüğünü görerek) canlı kanıtladık.
+
+**Redis'in ne olduğu, kurulumun her adımı, kodda değişen her satırın neden öyle yazıldığı, hangi Redis özelliklerinin (String tipi, TTL/`EXPIRE`, key naming) kullanıldığı ve demo-vs-üretim ayrımı için:** → **[`day-48-redis-detay.md`](day-48-redis-detay.md)**
+
+**Regresyon (Redis dahil):**
+```
+dotnet test FieldOps.slnx    → 49/49 (Redis'e hic dokunulmadan)
+dotnet build StockPilot.slnx → 0 Hata, 0 Uyarı
+dotnet build RoadmapOS.slnx  → 0 Hata, 0 Uyarı
+```
+
+---
+
 ## Bugünün dersi ve sıradaki gün
 
-Senin bir soruyla bulduğun gerçek bir dokümantasyon tutarsızlığı, bugünü tamamen değiştirdi — planlanan "Redis kurulumu" yerine "önce Redis'in anlamlı olacağı gerçek bir temel kur" oldu, ve senin ikinci kararınla bu temel **tek bir oturumda** tüm dört modülü kapsayacak şekilde tamamlandı. Artık FieldOps'un tamamı gerçek, kalıcı, test edilebilir bir persistence katmanına sahip — Redis'e (Week 10) gerçek bir anlamla dönebiliriz.
+Senin bir soruyla bulduğun gerçek bir dokümantasyon tutarsızlığı, bugünü tamamen değiştirdi — planlanan "Redis kurulumu" yerine "önce Redis'in anlamlı olacağı gerçek bir temel kur" oldu, ve senin ikinci kararınla bu temel **tek bir oturumda** tüm dört modülü kapsayacak şekilde tamamlandı. Üzerine, artık gerçek bir SQL sorgusuna dayanan bir rapor uç noktasıyla Redis cache-aside deseni de eklendi ve canlı olarak (cache'i elle bozup/silerek) gerçekten çalıştığı kanıtlandı. FieldOps artık hem gerçek, kalıcı bir persistence katmanına hem de anlamlı bir cache katmanına sahip — TTL-only invalidation'ın aktif hale getirilmesi, sıradaki günün doğal adayı.
