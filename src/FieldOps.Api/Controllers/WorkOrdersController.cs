@@ -2,6 +2,7 @@ using FieldOps.Api.Application;
 using FieldOps.Api.Models;
 using FieldOps.Modules.AuditLogs;
 using FieldOps.Modules.Customers;
+using Microsoft.AspNetCore.RateLimiting;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.WorkOrders;
 using Microsoft.AspNetCore.Mvc;
@@ -86,7 +87,13 @@ public class WorkOrdersController : ControllerBase
         return Ok(workOrders);
     }
 
+    // Day 53: per-organization rate limiting — only Create today, a
+    // deliberately narrow scope. This is the one action that writes a brand
+    // new row per call with no natural upper bound from an existing
+    // resource (Assign/Complete/etc. all operate on one already-existing
+    // work order, capping their own possible frequency).
     [HttpPost]
+    [EnableRateLimiting("PerOrganization")]
     public ActionResult<WorkOrderDto> Create(
         CreateWorkOrderRequest request,
         [FromHeader(Name = "X-Organization-Id")] int? organizationId,

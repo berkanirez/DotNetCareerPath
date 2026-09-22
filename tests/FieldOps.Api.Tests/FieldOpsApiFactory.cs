@@ -69,6 +69,16 @@ public class FieldOpsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:FieldOpsWorkOrdersDb", ConnectionStringFor("FieldOpsWorkOrders"));
         builder.UseSetting("ConnectionStrings:FieldOpsCustomersDb", ConnectionStringFor("FieldOpsCustomers"));
         builder.UseSetting("ConnectionStrings:FieldOpsAuditLogsDb", ConnectionStringFor("FieldOpsAuditLogs"));
+
+        // Day 53: the real, demo-sized rate limit (5 requests / 10 seconds
+        // per organization) is far too strict for these tests — many
+        // legitimately create more than 5 work orders for the same
+        // organization within a single test class's run, which shares one
+        // in-memory limiter instance for its whole lifetime. Overridden to
+        // an effectively-unlimited value here so these authorization/
+        // business-logic tests never fail for an unrelated reason; the
+        // actual 429 threshold is verified live, not by an automated test.
+        builder.UseSetting("RateLimiting:PerOrganization:PermitLimit", "100000");
     }
 
     // "new", not "override" — same reason as StockPilot's version (Day 28):

@@ -5,6 +5,7 @@ using FieldOps.Modules.Employees;
 using FieldOps.Modules.Organizations;
 using FieldOps.Modules.WorkOrders;
 using StackExchange.Redis;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -66,6 +67,45 @@ builder.Services.AddHostedService<WorkOrderReportCacheWarmer>();
 // alone, with zero controller changes.
 builder.Services.AddSingleton<INotificationSender, LoggingNotificationSender>();
 
+// Day 53: per-organization rate limiting — resource/performance isolation,
+// the natural counterpart to Week 8's data isolation (a tenant can't see
+// another tenant's data; now, a tenant can't degrade another tenant's
+// performance either). Partitioned by X-Organization-Id, not by IP/user, so
+// each organization gets its own independent "bucket" regardless of how
+// many employees within it are making requests. A missing header falls
+// into one shared "unknown" bucket — deliberately: a request with no
+// organization identity is rejected by ValidateMembership anyway (400),
+// long before it would ever reach a real database write, so a shared,
+// generous bucket for that case is enough. This is .NET's own built-in
+// middleware (Microsoft.AspNetCore.RateLimiting, since .NET 7) — no
+// third-party package needed, the same idiomatic-native-first spirit as
+// Day 50's BackgroundService over Hangfire/Quartz.
+//
+// PermitLimit/Window read from configuration, not hardcoded: the real demo
+// value (small, so a human can trigger 429 in a few seconds) would break
+// existing integration tests, which legitimately create far more than 5
+// work orders for the same organization within far less than 10 seconds.
+// FieldOpsApiFactory overrides these two settings to a much higher limit
+// for the test environment — the same "override a config VALUE, not the
+// business code" pattern Day 48 established for connection strings.
+var rateLimitPermitLimit = builder.Configuration.GetValue("RateLimiting:PerOrganization:PermitLimit", 5);
+var rateLimitWindowSeconds = builder.Configuration.GetValue("RateLimiting:PerOrganization:WindowSeconds", 10);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("PerOrganization", httpContext =>
+    {
+        var organizationId = httpContext.Request.Headers["X-Organization-Id"].FirstOrDefault() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(organizationId, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = rateLimitPermitLimit,
+            Window = TimeSpan.FromSeconds(rateLimitWindowSeconds),
+            QueueLimit = 0
+        });
+    });
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -75,6 +115,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseRateLimiter();
 
 app.UseAuthorization();
 
