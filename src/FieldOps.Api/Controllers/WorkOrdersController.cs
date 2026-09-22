@@ -1,5 +1,6 @@
 using FieldOps.Api.Application;
 using FieldOps.Api.Models;
+using FieldOps.Modules.AuditLogs;
 using FieldOps.Modules.Customers;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.WorkOrders;
@@ -24,6 +25,7 @@ public class WorkOrdersController : ControllerBase
     private readonly WorkOrderAssignmentService _workOrderAssignmentService;
     private readonly WorkOrderReportService _workOrderReportService;
     private readonly INotificationSender _notificationSender;
+    private readonly IAuditLogWriter _auditLogWriter;
     private readonly ILogger<WorkOrdersController> _logger;
 
     public WorkOrdersController(
@@ -33,6 +35,7 @@ public class WorkOrdersController : ControllerBase
         WorkOrderAssignmentService workOrderAssignmentService,
         WorkOrderReportService workOrderReportService,
         INotificationSender notificationSender,
+        IAuditLogWriter auditLogWriter,
         ILogger<WorkOrdersController> logger)
     {
         _workOrderDirectory = workOrderDirectory;
@@ -41,6 +44,7 @@ public class WorkOrdersController : ControllerBase
         _workOrderAssignmentService = workOrderAssignmentService;
         _workOrderReportService = workOrderReportService;
         _notificationSender = notificationSender;
+        _auditLogWriter = auditLogWriter;
         _logger = logger;
     }
 
@@ -143,6 +147,7 @@ public class WorkOrdersController : ControllerBase
         }
 
         _workOrderReportService.InvalidateCache(organizationId!.Value);
+        _auditLogWriter.Record(organizationId!.Value, id, "Assigned", "Employee", actingEmployeeId!.Value);
         return Ok(ToDto(result.WorkOrder!));
     }
 
@@ -325,6 +330,7 @@ public class WorkOrdersController : ControllerBase
         }
 
         _workOrderReportService.InvalidateCache(organizationId!.Value);
+        _auditLogWriter.Record(organizationId!.Value, id, "Completed", "Employee", actingEmployeeId!.Value);
 
         // A failed notification must never fail the completion itself — the
         // work order is already, genuinely, Completed at this point.
@@ -424,6 +430,7 @@ public class WorkOrdersController : ControllerBase
             return BadRequest($"Work order {id} must be Completed before it can be approved.");
         }
 
+        _auditLogWriter.Record(organizationId.Value, id, "Approved", "Customer", actingCustomerId.Value);
         return Ok(ToDto(updated));
     }
 

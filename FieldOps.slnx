@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/FieldOps.Api/FieldOps.Api.csproj" />
+    <Project Path="src/FieldOps.Modules.AuditLogs/FieldOps.Modules.AuditLogs.csproj" />
     <Project Path="src/FieldOps.Modules.Customers/FieldOps.Modules.Customers.csproj" />
     <Project Path="src/FieldOps.Modules.Employees/FieldOps.Modules.Employees.csproj" />
     <Project Path="src/FieldOps.Modules.Organizations/FieldOps.Modules.Organizations.csproj" />

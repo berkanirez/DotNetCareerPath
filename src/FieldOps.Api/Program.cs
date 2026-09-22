@@ -1,4 +1,5 @@
 using FieldOps.Api.Application;
+using FieldOps.Modules.AuditLogs;
 using FieldOps.Modules.Customers;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.Organizations;
@@ -27,6 +28,7 @@ builder.Services.AddOrganizationsModule(RequireConnectionString("FieldOpsOrganiz
 builder.Services.AddEmployeesModule(RequireConnectionString("FieldOpsEmployeesDb"));
 builder.Services.AddWorkOrdersModule(RequireConnectionString("FieldOpsWorkOrdersDb"));
 builder.Services.AddCustomersModule(RequireConnectionString("FieldOpsCustomersDb"));
+builder.Services.AddAuditLogsModule(RequireConnectionString("FieldOpsAuditLogsDb"));
 
 // Application-layer service: cross-module orchestration that belongs to the
 // host (Day 34), not inside either module or directly inside a controller.

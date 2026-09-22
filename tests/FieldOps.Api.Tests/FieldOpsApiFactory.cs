@@ -1,3 +1,4 @@
+using FieldOps.Modules.AuditLogs.Data;
 using FieldOps.Modules.Customers.Data;
 using FieldOps.Modules.Employees.Data;
 using FieldOps.Modules.Organizations.Data;
@@ -13,7 +14,7 @@ namespace FieldOps.Api.Tests;
 // Day 48: mirrors StockPilot's StockPilotApiFactory (Day 28) — a real,
 // disposable SQL Server spun up in a Docker container just for this test
 // run. The real dev databases (localhost\SQLEXPRESS) are never touched by
-// these tests at all. One container hosts all four modules' databases
+// these tests at all. One container hosts all five modules' databases
 // (distinct names, same instance) — the same "same instance, separate
 // databases" shape ADR 0003 already uses for local dev, just disposable.
 // No DbSeeder.Seed calls needed — each DbContext's own HasData (baked into
@@ -35,6 +36,8 @@ public class FieldOpsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             .UseSqlServer(ConnectionStringFor("FieldOpsWorkOrders")).Options, o => new WorkOrdersDbContext(o));
         await MigrateAsync(new DbContextOptionsBuilder<CustomersDbContext>()
             .UseSqlServer(ConnectionStringFor("FieldOpsCustomers")).Options, o => new CustomersDbContext(o));
+        await MigrateAsync(new DbContextOptionsBuilder<AuditLogsDbContext>()
+            .UseSqlServer(ConnectionStringFor("FieldOpsAuditLogs")).Options, o => new AuditLogsDbContext(o));
     }
 
     private static async Task MigrateAsync<TContext, TOptions>(TOptions options, Func<TOptions, TContext> create)
@@ -58,13 +61,14 @@ public class FieldOpsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     // Overrides the connection string CONFIGURATION VALUES that each
     // Add*Module call reads at startup — never touches any module's
-    // DbContext or Ef*Directory by name here, for any of the four modules.
+    // DbContext or Ef*Directory by name here, for any of the five modules.
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:FieldOpsOrganizationsDb", ConnectionStringFor("FieldOpsOrganizations"));
         builder.UseSetting("ConnectionStrings:FieldOpsEmployeesDb", ConnectionStringFor("FieldOpsEmployees"));
         builder.UseSetting("ConnectionStrings:FieldOpsWorkOrdersDb", ConnectionStringFor("FieldOpsWorkOrders"));
         builder.UseSetting("ConnectionStrings:FieldOpsCustomersDb", ConnectionStringFor("FieldOpsCustomers"));
+        builder.UseSetting("ConnectionStrings:FieldOpsAuditLogsDb", ConnectionStringFor("FieldOpsAuditLogs"));
     }
 
     // "new", not "override" — same reason as StockPilot's version (Day 28):

@@ -16,6 +16,7 @@
     <ProjectReference Include="..\FieldOps.Modules.Employees\FieldOps.Modules.Employees.csproj" />
     <ProjectReference Include="..\FieldOps.Modules.WorkOrders\FieldOps.Modules.WorkOrders.csproj" />
     <ProjectReference Include="..\FieldOps.Modules.Customers\FieldOps.Modules.Customers.csproj" />
+    <ProjectReference Include="..\FieldOps.Modules.AuditLogs\FieldOps.Modules.AuditLogs.csproj" />
   </ItemGroup>
 
 </Project>
