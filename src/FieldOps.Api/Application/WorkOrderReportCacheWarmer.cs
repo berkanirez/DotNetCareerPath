@@ -35,7 +35,28 @@ public class WorkOrderReportCacheWarmer : BackgroundService
         using var timer = new PeriodicTimer(Interval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            WarmAllOrganizations();
+            // Live-discovered bug (via a CI failure, not staged): the
+            // per-organization try/catch below only protected
+            // GetStatusReport itself — it never protected
+            // GetRequiredService<WorkOrderReportService>() a few lines
+            // above, which is exactly where IConnectionMultiplexer's lazy
+            // Redis connection is actually attempted. When Redis was
+            // unreachable (no Redis service in GitHub Actions' CI runner),
+            // that threw OUTSIDE any try/catch, escaped ExecuteAsync
+            // entirely, and — because BackgroundServiceExceptionBehavior
+            // defaults to StopHost — took down the ENTIRE application host,
+            // failing every unrelated test (and, in real production, every
+            // unrelated request) sharing that same process. A single
+            // background tick's failure must never be allowed to escape
+            // ExecuteAsync at all, for any reason.
+            try
+            {
+                WarmAllOrganizations();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Work order report cache warming tick failed");
+            }
         }
     }
 
@@ -53,10 +74,12 @@ public class WorkOrderReportCacheWarmer : BackgroundService
             }
             catch (Exception ex)
             {
-                // One organization's failure (e.g. a transient DB/Redis
-                // blip) must not stop the whole warmer from ever running
-                // again — the next tick, and every other organization this
-                // tick, still needs to proceed.
+                // One organization's failure (e.g. a transient DB blip)
+                // must not stop the rest of this same tick's organizations
+                // from being warmed — the outer try/catch above is the
+                // last-resort safety net; this inner one keeps failures
+                // scoped as narrowly as possible when the failure really is
+                // per-organization.
                 _logger.LogWarning(ex, "Failed to warm work order report cache for organization {OrganizationId}", organization.Id);
             }
         }

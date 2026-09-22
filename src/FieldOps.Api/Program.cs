@@ -40,9 +40,23 @@ builder.Services.AddScoped<WorkOrderAssignmentService>();
 // IConnectionMultiplexer (WorkOrderReportService, only when the report
 // endpoint is actually called), not eagerly at startup. Existing tests that
 // never call that endpoint never touch Redis at all.
+//
+// Day 52 fix (live-discovered via a CI failure, then a slow local repro):
+// AbortOnConnectFail defaults to true, meaning Connect() blocks — for as
+// long as the underlying OS socket connect takes, which was observed to be
+// far longer than StackExchange.Redis's own ConnectTimeout on this Windows
+// machine — before throwing when Redis is unreachable. With it set to
+// false, Connect() returns immediately regardless of Redis's availability;
+// the multiplexer keeps retrying in the background, and any command issued
+// while disconnected fails fast with a RedisConnectionException instead of
+// blocking. Combined with WorkOrderReportCacheWarmer's own try/catch, a
+// Redis outage now degrades quickly and gracefully instead of blocking or
+// crashing the whole host.
 var redisConnectionString = builder.Configuration["Redis:ConnectionString"]
     ?? throw new InvalidOperationException("Missing configuration: Redis:ConnectionString");
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+var redisOptions = ConfigurationOptions.Parse(redisConnectionString);
+redisOptions.AbortOnConnectFail = false;
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
 builder.Services.AddScoped<WorkOrderReportService>();
 builder.Services.AddHostedService<WorkOrderReportCacheWarmer>();
 

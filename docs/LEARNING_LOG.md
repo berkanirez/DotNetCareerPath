@@ -1921,3 +1921,36 @@ Copy this template for each new entry:
 **Independent task:** Answered correctly, unprompted ("evet mantıklı olurdu"): notifying the assignee on `Assign` would follow the identical structural pattern (interface + failure isolation + post-success trigger), differing only in recipient type (`Employee` vs. `Customer`) and triggering business event — not implemented today, confirmed as a plausible future extension of the same abstraction.
 
 **Next session:** Phase 3, Week 10, Day 52 — cache-aside, invalidation, background/scheduled-job mechanics, and notification abstraction are all now complete. Remaining Week 10 topics: audit logs, rate limiting, idempotency. Exact scope to be finalized at the start of the session.
+
+### 2026-09-22 — Phase 3, Week 10, Day 52
+
+**Topic:** Audit Logs — the first of FieldOps's ten planned modules to be tackled purely as an append-only ledger, recording who did what and when for a work order's most accountability-sensitive transitions.
+
+**Problem solved:** `WorkOrders` only ever reflects current state, never history — no way to answer "who assigned/completed/approved this, and when" after the fact. Today: a new module records exactly that for `Assign`, `Complete`, and `Approve`, spanning both of FieldOps's actor types (`Employee`, `Customer`).
+
+**What I implemented:**
+* `FieldOps.Modules.AuditLogs` — a new class library added to `FieldOps.slnx`, following the established 5-file module pattern (Day 32 onward) with one deliberate deviation: `IAuditLogWriter` is write-only (`Record(organizationId, workOrderId, action, actorType, actorId)`), no `GetAll`/`GetById`, since there's no read/reporting feature yet. `AuditLogEntry` (internal) starts genuinely empty (no seed data, unlike Organizations/Employees/Customers).
+* `Action` and `ActorType` are plain `string`s rather than enums — a deliberate choice, not a placeholder: `AuditLogs` has zero project reference to `Employees`/`WorkOrders` (ADR 0001/0002), so it can't (and shouldn't) share their enums; keeping these fields as strings means new event/actor vocabulary never requires recompiling or migrating this module.
+* `EfAuditLogWriter.Record` wraps its `SaveChanges()` call in `try`/`catch` (`ILogger` warning on failure) from its very first version — Day 51's failure-isolation lesson (a persistence side effect's failure must never mask an already-successful business operation) applied proactively here, not retrofitted after a live discovery this time.
+* `WorkOrdersController`: `Assign`/`Complete` call `_auditLogWriter.Record(..., "Employee", actingEmployeeId)`; `Approve` calls it with `"Customer", actingCustomerId` — after each mutation's success, alongside the existing `InvalidateCache` calls where applicable. `Create`/`Start`/`Unassign`/`Reopen`/`AddEvidence` deliberately not wired today, a documented scope limit.
+* `Program.cs`/`appsettings.Development.json`: fifth connection string (`FieldOpsAuditLogsDb`) and module registration, mirroring the other four exactly. `FieldOpsApiFactory` extended to migrate this fifth database via Testcontainers, same pattern as the other four.
+
+**Runtime flow:** `Assign`/`Complete`/`Approve` mutation succeeds → (where applicable) `InvalidateCache` → `IAuditLogWriter.Record(...)` → `EfAuditLogWriter` inserts one row into its own SQL Server database, wrapped in `try`/`catch` → `200 OK` regardless of whether the audit write itself succeeded.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 49/49, with the fifth database now provisioned via Testcontainers alongside the existing four.
+* Live proof: a full lifecycle (create → assign → start → complete → approve, with a linked customer) produced exactly 3 correct rows in `AuditLogEntries` (`Assigned`/`Employee`/1, `Completed`/`Employee`/2, `Approved`/`Customer`/1), confirmed directly via `sqlcmd`, not inferred from the HTTP responses alone.
+* `EfAuditLogWriter.Record` was then temporarily made to throw unconditionally; a fresh `Assign` call still returned `200 OK`, with a "Failed to record audit log entry" warning in the logs — proving the failure isolation genuinely works against a real exception, then reverted and re-verified back to normal.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both clean. Test data cleaned up via `sqlcmd`/`redis-cli` after each verification round.
+
+**Evidence:** FieldOps's fifth persisted module, and the first genuinely new module built since the database-per-module migration (Day 48) — proving the whole module + EF Core + Testcontainers pipeline generalizes cleanly to a brand-new module, not just retrofits to existing ones. Day 51's failure-isolation principle demonstrated as a reusable design lesson, applied from scratch in a second, unrelated module rather than only patched into the first place it was discovered missing.
+
+**Mistakes or difficulties:** None — the module followed the established pattern cleanly on the first attempt, unlike Day 48's first `IDesignTimeDbContextFactory` surprise.
+
+**Production considerations:** No read/reporting endpoint exists yet for this data — today is write-path-only, a deliberate depth-over-coverage choice. Only 3 of 8 work-order actions are audited today; extending coverage (starting with `Create`, per the independent task below) is straightforward but not done. Audit writes are synchronous/inline, the same class of simplification as Day 50-51's background/notification work.
+
+**Understanding questions and answers:** Q1 (whether a write-only `IAuditLogWriter` is a gap or a correct design) answered correctly, unprompted: a correct design given today's scope. Q2 (why `Action`/`ActorType` are `string`s, not enums) was answered with a directionally-right but incomplete instinct ("we'll enum it later") — corrected/extended into the fuller, lasting reason: the module's lack of dependency on other modules' enums (ADR 0002) and an audit log's need to stay extensible without recompiling/migrating, unlike `WorkOrderStatus`'s genuinely closed, rule-bearing state machine. Q3 (whether the repeated `try`/`catch` shape between `WorkOrderReportService.InvalidateCache` and `EfAuditLogWriter.Record` counts as duplication) was unknown, explained: the same *principle* applied independently in two unrelated modules with different I/O and DI graphs is not the kind of duplication worth extracting — doing so would create an artificial cross-module coupling, the inverse of Day 39/44/45's "don't force superficially-similar things together" lesson.
+
+**Independent task:** Answered correctly but tentatively ("yazmalı galiba, emin değilim"): confirmed as correct — `Create` fits the exact same accountability rationale as `Assign`/`Complete`/`Approve` (and was already implicitly covered by Day 49's broader "any Status-changing action" rule, applied there to cache invalidation), left out of today's scope only because the day's slice was deliberately narrowed to 3 actions, not for any permanent architectural reason.
+
+**Next session:** Phase 3, Week 10, Day 53 — cache-aside, invalidation, background/scheduled-job mechanics, notification abstraction, and a first audit-logs slice are all now complete. Remaining Week 10 topics: rate limiting, idempotency (plus, optionally, wider audit-log coverage starting with `Create`). Exact scope to be finalized at the start of the session.
