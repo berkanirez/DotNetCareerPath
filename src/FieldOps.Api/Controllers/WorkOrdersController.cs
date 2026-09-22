@@ -23,19 +23,25 @@ public class WorkOrdersController : ControllerBase
     private readonly ICustomerDirectory _customerDirectory;
     private readonly WorkOrderAssignmentService _workOrderAssignmentService;
     private readonly WorkOrderReportService _workOrderReportService;
+    private readonly INotificationSender _notificationSender;
+    private readonly ILogger<WorkOrdersController> _logger;
 
     public WorkOrdersController(
         IWorkOrderDirectory workOrderDirectory,
         IEmployeeDirectory employeeDirectory,
         ICustomerDirectory customerDirectory,
         WorkOrderAssignmentService workOrderAssignmentService,
-        WorkOrderReportService workOrderReportService)
+        WorkOrderReportService workOrderReportService,
+        INotificationSender notificationSender,
+        ILogger<WorkOrdersController> logger)
     {
         _workOrderDirectory = workOrderDirectory;
         _employeeDirectory = employeeDirectory;
         _customerDirectory = customerDirectory;
         _workOrderAssignmentService = workOrderAssignmentService;
         _workOrderReportService = workOrderReportService;
+        _notificationSender = notificationSender;
+        _logger = logger;
     }
 
     // Day 48 (Redis): the first genuinely expensive-to-repeat read in
@@ -288,11 +294,17 @@ public class WorkOrdersController : ControllerBase
         return Ok(ToDto(updated));
     }
 
+    // Day 51: the only async action in this controller today — a deliberate,
+    // minimal exception, not a full controller-wide async conversion (that
+    // remains out of scope, same as the still-synchronous *Directory
+    // classes since Day 48). Only Complete needs to await anything, because
+    // it's the only action that calls INotificationSender.
     [HttpPost("{id}/complete")]
-    public ActionResult<WorkOrderDto> Complete(
+    public async Task<ActionResult<WorkOrderDto>> Complete(
         int id,
         [FromHeader(Name = "X-Organization-Id")] int? organizationId,
-        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId,
+        CancellationToken cancellationToken)
     {
         var membershipError = ValidateMembership(organizationId, actingEmployeeId);
         if (membershipError is not null)
@@ -313,6 +325,23 @@ public class WorkOrdersController : ControllerBase
         }
 
         _workOrderReportService.InvalidateCache(organizationId!.Value);
+
+        // A failed notification must never fail the completion itself — the
+        // work order is already, genuinely, Completed at this point.
+        if (updated.CustomerId is not null)
+        {
+            try
+            {
+                await _notificationSender.NotifyAsync(
+                    $"Work order '{updated.Title}' has been completed and is awaiting your approval.",
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send completion notification for work order {WorkOrderId}", id);
+            }
+        }
+
         return Ok(ToDto(updated));
     }
 

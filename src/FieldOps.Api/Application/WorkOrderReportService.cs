@@ -16,11 +16,13 @@ public class WorkOrderReportService
 
     private readonly IWorkOrderDirectory _workOrderDirectory;
     private readonly IConnectionMultiplexer _redis;
+    private readonly ILogger<WorkOrderReportService> _logger;
 
-    public WorkOrderReportService(IWorkOrderDirectory workOrderDirectory, IConnectionMultiplexer redis)
+    public WorkOrderReportService(IWorkOrderDirectory workOrderDirectory, IConnectionMultiplexer redis, ILogger<WorkOrderReportService> logger)
     {
         _workOrderDirectory = workOrderDirectory;
         _redis = redis;
+        _logger = logger;
     }
 
     public WorkOrderStatusReport GetStatusReport(int organizationId)
@@ -52,9 +54,24 @@ public class WorkOrderReportService
     // Day 49: active invalidation — called by every controller action that
     // changes a work order's Status (the only thing this report counts).
     // Reassign/Approve never touch Status, so they never call this.
+    //
+    // Day 51 fix: by the time any caller reaches this point, the real
+    // mutation already succeeded and was persisted — invalidating the cache
+    // is a side effect, not the operation itself. A Redis blip here must
+    // never turn an already-successful Complete/Assign/etc. into an error
+    // response for the caller, the exact same principle Day 51 applied to
+    // INotificationSender. Worst case: a stale cached report for up to the
+    // remaining TTL, not a failed request.
     public void InvalidateCache(int organizationId)
     {
-        var db = _redis.GetDatabase();
-        db.KeyDelete($"workorders:report:{organizationId}");
+        try
+        {
+            var db = _redis.GetDatabase();
+            db.KeyDelete($"workorders:report:{organizationId}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to invalidate work order report cache for organization {OrganizationId}", organizationId);
+        }
     }
 }

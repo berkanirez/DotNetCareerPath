@@ -44,6 +44,12 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 builder.Services.AddScoped<WorkOrderReportService>();
 builder.Services.AddHostedService<WorkOrderReportCacheWarmer>();
 
+// Day 51: notification abstraction — WorkOrdersController only ever depends
+// on INotificationSender, never on this concrete demo implementation. A
+// real provider (email/SMS/push) would later replace this registration
+// alone, with zero controller changes.
+builder.Services.AddSingleton<INotificationSender, LoggingNotificationSender>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
