@@ -1823,3 +1823,35 @@ Copy this template for each new entry:
 **Independent task:** Explained by Claude rather than attempted by Berkan (same explicit request as the Q&A above): adding a cache-invalidation call to the mutations that affect the report (`Assign`/`Start`/`Complete`/`Approve`/etc.), via a new `WorkOrderReportService.InvalidateCache(organizationId)` method (`db.KeyDelete(...)`) called from the controller after a successful mutation — not yet implemented in code, since that requires `UYGULA`.
 
 **Next session:** Phase 3, Week 10, Day 49 — the natural next step flagged above: implement real cache invalidation (the independent task's design) so the report never needs to rely on the 30-second TTL alone. Remaining Week 10 topics after that: background services, scheduled jobs, notification abstraction, audit logs, rate limiting, idempotency.
+
+### 2026-09-21 — Phase 3, Week 10, Day 49
+
+**Topic:** Active cache invalidation — closing the one deliberate gap Day 48 left open (TTL-only expiry for `GET /api/workorders/report`).
+
+**Problem solved:** A work order's status could change (e.g. `Complete`) and the report would keep showing the old counts for up to 30 seconds, since nothing told Redis the underlying data had changed. Today: every controller action that changes a work order's `Status` now proactively deletes the relevant cache entry right after a successful mutation, so the next read is a guaranteed cache miss that recomputes the truth.
+
+**What I implemented:**
+* `WorkOrderReportService.InvalidateCache(int organizationId)` — `_redis.GetDatabase().KeyDelete($"workorders:report:{organizationId}")`. Kept on the service (not called via a raw `IConnectionMultiplexer` injected into the controller) so the cache-key format stays defined in exactly one place.
+* `WorkOrdersController`: `_workOrderReportService.InvalidateCache(organizationId!.Value)` added to `Create`, `Assign`, `Start`, `Complete`, `Unassign`, `Reopen` — every action whose underlying `IWorkOrderDirectory` call actually changes `WorkOrder.Status` (the only field the report counts). Each call is placed strictly after the mutation is confirmed non-null/successful, never before an early `BadRequest` return for an invalid state transition.
+* `Reassign` and `Approve` deliberately excluded: `Reassign` only changes `AssignedEmployeeId`, `Approve` only changes `CustomerApproved` — neither ever moves `Status`, so invalidating for them would be dead code, never observably different from doing nothing.
+* `docs/daily-code-notes/day-49.md` created (Turkish), including a table mapping each action to whether it changes `Status` and therefore whether it got invalidation.
+
+**Runtime flow:** Mutation action → real SQL Server write via `IWorkOrderDirectory` → (only if it succeeded) `WorkOrderReportService.InvalidateCache(organizationId)` → Redis `DEL workorders:report:{organizationId}` → next `GET /api/workorders/report` is a guaranteed cache miss → recomputes from SQL Server → re-caches with a fresh 30-second TTL.
+
+**Verification:**
+* `dotnet test FieldOps.slnx` → 49/49, unchanged (none of the existing tests call the report or invalidation).
+* Live proof, a full lifecycle on a real running instance: cache cleared → baseline `{0,0,0,0}` → `Create` → report immediately showed `open:1` (no 30-second wait) → `Assign` → `open:0, assigned:1` immediately → `Start` → `assigned:0, inProgress:1` immediately → `Complete` → `inProgress:0, completed:1` immediately → `Reopen` → `inProgress:1` immediately. Then `Reassign` was called on the same work order and the report was unchanged, with the Redis key's `TTL` confirmed still nearly full afterward — proving `Reassign` genuinely never touched the cache, rather than coincidentally producing the same numbers.
+* `dotnet build StockPilot.slnx` / `RoadmapOS.slnx` → both clean.
+* Test data (`WorkOrders.Id=2`) and the Redis key were cleaned up afterward via direct `sqlcmd`/`redis-cli` commands, restoring the dev environment to baseline.
+
+**Evidence:** Cache-aside's "write" half completed — the report now has both a passive expiry (TTL) and an active invalidation path, matching the pattern any real production cache needs. The exclusion rule (`Status`-changing actions only) was derived from what the report actually reads, not applied blindly to "every mutation," and confirmed correct by the independent task below. Commit (`54f05c5`, pushed by Berkan).
+
+**Mistakes or difficulties:** None in the implementation itself. One environmental snag during live verification: a shell variable (`$WO_ID`) captured in one tool call did not persist into the next (each call is a fresh shell) — the work order id was hardcoded for the remaining lifecycle steps instead.
+
+**Production considerations:** No automated test covers the new invalidation behavior — GitHub Actions' `ubuntu-latest` has no real Redis, and `FieldOpsApiFactory` provisions Testcontainers-backed SQL Server for every test but nothing equivalent for Redis, so any test calling the report endpoint would fail in CI. This is the same class of gap Day 48 solved for SQL Server via `Testcontainers.MsSql`; a `Testcontainers.Redis`-based fix (or a GitHub Actions `services: redis` block) is flagged as a distinct future day, not done today. Verification today was therefore live-only, as it was for the cache-aside mechanism itself on Day 48.
+
+**Understanding questions and answers:** Q1 (why `Reassign`/`Approve` don't call `InvalidateCache`) answered correctly and precisely, unprompted: "onlar status durumunu değiştirmiyor." Q2 (why invalidation sits after the success path, not before) answered correctly and precisely, unprompted: invalidating when the database never actually changed would be wasted work. Q3 (the CI constraint behind today's lack of automated coverage, and its Day 48 parallel) was unknown, explained in full (see Production considerations above).
+
+**Independent task:** Answered correctly, unprompted ("evet"): if the report were ever extended with a field derived from `EvidenceNotes`, `AddEvidence` would then need `InvalidateCache` too — confirming the real governing rule is "invalidate whenever a field the report actually reads changes," not the narrower "only `Status` matters," which is merely what today's specific report shape happens to require.
+
+**Next session:** Phase 3, Week 10, Day 50 — cache-aside and its invalidation are both now complete; remaining Week 10 topics: background services, scheduled jobs, notification abstraction, audit logs, rate limiting, idempotency. Exact scope to be finalized at the start of the session.

@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith (Phase 2 — StockPilot — complete)
 * **Week:** 10 — in progress
-* **Day:** 48 (complete)
+* **Day:** 49 (complete)
 * **Active project:** FieldOps SaaS Modular Monolith
-* **Status:** All five FieldOps modules converted from in-memory storage to real, physically separate SQL Server databases (ADR 0003, database-per-module), with Testcontainers-backed integration tests; a Redis cache-aside layer added in front of a new `GET /api/workorders/report` endpoint, proven live to genuinely read from cache (30-second TTL, no active invalidation yet — the documented next step).
+* **Status:** `WorkOrderReportService.InvalidateCache(organizationId)` added and wired into every controller action that changes a work order's `Status` (`Create`/`Assign`/`Start`/`Complete`/`Unassign`/`Reopen`) — `GET /api/workorders/report` no longer depends on the 30-second TTL alone to reflect real changes. `Reassign`/`Approve` deliberately excluded (neither changes `Status`, the only thing the report counts).
 * **Available study time:** 2 hours/day
-* **Progress:** ~44% (Day 48 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~45% (Day 49 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -379,7 +379,13 @@ This file reflects the actual current state of the learning journey. It must alw
 * Cache-aside proven genuinely reading from Redis, not coincidentally recomputing: the cached value was manually overwritten with an impossible value (`999`s) and the endpoint returned it verbatim; the corrupted key was then deleted and the next call correctly recomputed and re-cached the real value.
 * `docs/daily-code-notes/day-48.md`, `docs/daily-code-notes/day-48-persistence-detay.md`, and `docs/daily-code-notes/day-48-redis-detay.md` created (Turkish).
 * Understanding questions and independent task across all three Q&A rounds today were explained/answered by Claude directly rather than attempted by Berkan, at his explicit request each time (see `docs/LEARNING_LOG.md` for the full record) — covering host-blindness (`IWorkOrderDirectory` vs. `EfWorkOrderDirectory`), the report's staleness window under TTL-only expiry, why `IConnectionMultiplexer` is `Singleton`, and the design (not yet implemented) for active cache invalidation via a new `WorkOrderReportService.InvalidateCache(organizationId)` method.
-* **Day 48 is complete.** The persistence-only work (all four modules + Testcontainers) was committed and pushed by Berkan as `e772b4a` (following `21ac264` for Organizations-only); the Redis work (`WorkOrderStatusReport.cs`, `WorkOrderReportService.cs`, and the Redis-related changes to `Program.cs`/`appsettings.Development.json`/`WorkOrdersController.cs`/`FieldOps.Api.csproj`) remains uncommitted pending Berkan's confirmation.
+* **Day 48 is complete.** The persistence-only work (all four modules + Testcontainers) was committed and pushed by Berkan as `e772b4a` (following `21ac264` for Organizations-only); the Redis work was committed as `bb761c9`.
+* **Day 49.** `WorkOrderReportService.InvalidateCache(int organizationId)` added (`db.KeyDelete($"workorders:report:{organizationId}")`) and called from `WorkOrdersController`'s `Create`/`Assign`/`Start`/`Complete`/`Unassign`/`Reopen` actions, always after the mutation is confirmed to have actually succeeded (never before an early `BadRequest` return). `Reassign` and `Approve` deliberately never call it, since neither changes `Status` — the only field the report counts.
+* Live proof, a full lifecycle on a real running instance: after each of `Create`→`Assign`→`Start`→`Complete`→`Reopen`, the report reflected the change **immediately** (well within the 30-second TTL window) rather than waiting for expiry; `Reassign` was then confirmed to leave the cached entry alone (`TTL` still nearly full afterward), proving the exclusion is real, not accidental.
+* `docs/daily-code-notes/day-49.md` created (Turkish).
+* Understanding questions: Q1 (why `Reassign`/`Approve` are excluded) and Q2 (why invalidation is placed after the success path, not before) both answered correctly and precisely, unprompted. Q3 (the CI constraint behind today's lack of an automated test for the new behavior) was unknown, explained: GitHub Actions' `ubuntu-latest` has no real Redis, and `FieldOpsApiFactory` provisions Testcontainers-backed SQL Server for tests but no equivalent for Redis — the same class of gap Day 48 solved for SQL Server via `Testcontainers.MsSql`; a `Testcontainers.Redis`-based fix is flagged as a separate future day, not done today.
+* Independent task (would a future report field derived from `EvidenceNotes` require adding `InvalidateCache` to `AddEvidence` too?) answered correctly ("evet"), unprompted — confirms the general rule (invalidate whenever a field the report actually reads changes) rather than the narrower "only `Status` matters" rule being coincidentally right only for today's specific report shape.
+* Day 49 code and `day-49.md` committed by Berkan (`54f05c5`).
 
 ## Decisions on record
 
@@ -407,6 +413,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Continue Phase 3, **Week 10** (Redis, cache-aside, cache invalidation, background services, scheduled jobs, notification abstraction, audit logs, rate limiting, idempotency), Day 49: the flagged next step is active cache invalidation for `GET /api/workorders/report` (a `WorkOrderReportService.InvalidateCache(organizationId)` method, called from the mutation actions that affect the report), so the report no longer depends on the 30-second TTL alone; exact scope to be confirmed at the start of the session, per the standing planning protocol.
+2. Continue Phase 3, **Week 10** (Redis, cache-aside, cache invalidation, background services, scheduled jobs, notification abstraction, audit logs, rate limiting, idempotency), Day 50: cache-aside + invalidation are both now done; remaining Week 10 topics are background services, scheduled jobs, notification abstraction, audit logs, rate limiting, idempotency — exact Day 50 scope to be confirmed at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 

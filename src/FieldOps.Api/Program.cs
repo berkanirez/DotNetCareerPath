@@ -42,6 +42,7 @@ var redisConnectionString = builder.Configuration["Redis:ConnectionString"]
     ?? throw new InvalidOperationException("Missing configuration: Redis:ConnectionString");
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
 builder.Services.AddScoped<WorkOrderReportService>();
+builder.Services.AddHostedService<WorkOrderReportCacheWarmer>();
 
 var app = builder.Build();
 
