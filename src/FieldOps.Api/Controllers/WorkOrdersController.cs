@@ -27,6 +27,7 @@ public class WorkOrdersController : ControllerBase
     private readonly WorkOrderReportService _workOrderReportService;
     private readonly INotificationSender _notificationSender;
     private readonly IAuditLogWriter _auditLogWriter;
+    private readonly IdempotencyService _idempotencyService;
     private readonly ILogger<WorkOrdersController> _logger;
 
     public WorkOrdersController(
@@ -37,6 +38,7 @@ public class WorkOrdersController : ControllerBase
         WorkOrderReportService workOrderReportService,
         INotificationSender notificationSender,
         IAuditLogWriter auditLogWriter,
+        IdempotencyService idempotencyService,
         ILogger<WorkOrdersController> logger)
     {
         _workOrderDirectory = workOrderDirectory;
@@ -46,6 +48,7 @@ public class WorkOrdersController : ControllerBase
         _workOrderReportService = workOrderReportService;
         _notificationSender = notificationSender;
         _auditLogWriter = auditLogWriter;
+        _idempotencyService = idempotencyService;
         _logger = logger;
     }
 
@@ -97,12 +100,28 @@ public class WorkOrdersController : ControllerBase
     public ActionResult<WorkOrderDto> Create(
         CreateWorkOrderRequest request,
         [FromHeader(Name = "X-Organization-Id")] int? organizationId,
-        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey)
     {
         var membershipError = ValidateMembership(organizationId, actingEmployeeId);
         if (membershipError is not null)
         {
             return membershipError;
+        }
+
+        // Day 54: idempotency — an optional client-supplied key. If this
+        // exact key was already used for a successful Create, replay that
+        // same result instead of creating a second work order. A missing
+        // key (the common case for most callers) skips this entirely,
+        // exactly as before Day 54 — this is opt-in protection, not a
+        // required contract change.
+        if (idempotencyKey is not null)
+        {
+            var cachedResponse = _idempotencyService.TryGetCachedResponse(idempotencyKey);
+            if (cachedResponse is not null)
+            {
+                return StatusCode(StatusCodes.Status201Created, cachedResponse);
+            }
         }
 
         // Day 47: same generic "does not exist" hiding pattern as work
@@ -121,6 +140,16 @@ public class WorkOrdersController : ControllerBase
         var workOrder = _workOrderDirectory.Create(request.Title, organizationId!.Value, request.CustomerId);
         _workOrderReportService.InvalidateCache(organizationId.Value);
         var dto = ToDto(workOrder);
+
+        // Only the success path is remembered — a validation failure (the
+        // two BadRequest returns above) is never cached, since the caller
+        // may fix the request and legitimately needs to retry with real
+        // effect, not get a replayed failure forever.
+        if (idempotencyKey is not null)
+        {
+            _idempotencyService.StoreResponse(idempotencyKey, dto);
+        }
+
         return StatusCode(StatusCodes.Status201Created, dto);
     }
 

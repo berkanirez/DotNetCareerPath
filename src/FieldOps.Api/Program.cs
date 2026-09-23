@@ -9,6 +9,18 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Day 55: structured logging — JSON console output, with scopes turned on
+// so CorrelationIdMiddleware's per-request scope actually appears in the
+// output (IncludeScopes defaults to false; without it, BeginScope silently
+// does nothing visible). JSON (not the plain-text simple console formatter)
+// because it's the one built-in formatter that serializes a Dictionary-based
+// scope into real, separate fields rather than just calling ToString() on it.
+builder.Logging.AddJsonConsole(options =>
+{
+    options.IncludeScopes = true;
+    options.JsonWriterOptions = new System.Text.Json.JsonWriterOptions { Indented = false };
+});
+
 // Add services to the container.
 
 builder.Services.AddControllers();
@@ -61,6 +73,10 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 builder.Services.AddScoped<WorkOrderReportService>();
 builder.Services.AddHostedService<WorkOrderReportCacheWarmer>();
 
+// Day 54: idempotency — no per-request state of its own (just IConnectionMultiplexer,
+// itself a Singleton), so this can safely be a Singleton too.
+builder.Services.AddSingleton<IdempotencyService>();
+
 // Day 51: notification abstraction — WorkOrdersController only ever depends
 // on INotificationSender, never on this concrete demo implementation. A
 // real provider (email/SMS/push) would later replace this registration
@@ -106,6 +122,23 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
+// Day 56: health checks — liveness ("is the process even running," no
+// dependency touched, cheap and instant) vs. readiness ("can this instance
+// actually do its job right now," which means its critical dependencies
+// must be reachable). Both custom IHealthCheck implementations take only a
+// connection string / the existing IConnectionMultiplexer — never a
+// module's internal DbContext, preserving ADR 0001/0002's boundary.
+// Only one of the five SQL Server databases (WorkOrders) is checked today —
+// a deliberate scope narrowing, not an oversight; they all live on the same
+// physical SQL Server instance in this demo setup.
+builder.Services.AddHealthChecks()
+    .AddCheck<RedisHealthCheck>("redis", tags: ["ready"])
+    .AddTypeActivatedCheck<SqlServerHealthCheck>(
+        "workorders-db",
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy,
+        tags: ["ready"],
+        args: [RequireConnectionString("FieldOpsWorkOrdersDb")]);
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -114,11 +147,51 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+// Day 55: registered before everything else so the correlation ID scope
+// wraps the entire rest of the pipeline — every log line produced by any
+// later middleware, controller, or service during this request inherits it.
+app.UseMiddleware<CorrelationIdMiddleware>();
+
 app.UseHttpsRedirection();
 
 app.UseRateLimiter();
 
 app.UseAuthorization();
+
+// Day 58: the framework's default health check response is just the bare
+// word "Healthy"/"Unhealthy" — no way to tell WHICH check failed. A JSON
+// breakdown per check is what made today's Docker networking diagnosis
+// (which dependency is actually unreachable from inside the container)
+// observable at all, rather than a single opaque failure.
+static Task WriteHealthCheckResponse(HttpContext context, Microsoft.Extensions.Diagnostics.HealthChecks.HealthReport report)
+{
+    context.Response.ContentType = "application/json";
+    var payload = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        status = report.Status.ToString(),
+        checks = report.Entries.Select(e => new
+        {
+            name = e.Key,
+            status = e.Value.Status.ToString(),
+            description = e.Value.Description
+        })
+    });
+    return context.Response.WriteAsync(payload);
+}
+
+// Day 56: /health/live never runs any check (Predicate: _ => false) — pure
+// "is the process responding at all." /health/ready runs only the checks
+// tagged "ready" — the real dependency checks.
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = WriteHealthCheckResponse
+});
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = WriteHealthCheckResponse
+});
 
 app.MapControllers();
 

@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.vscode/
+.claude/
+docs/
+*.md
+RoadmapOS.slnx
+StockPilot.slnx
+src/RoadmapOS.Web/
+src/StockPilot.Api/
+tests/
