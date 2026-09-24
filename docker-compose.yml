@@ -1,0 +1,52 @@
+# Day 59: all three pieces of FieldOps — SQL Server, Redis, and the API
+# itself — defined together and put on one shared Docker network. Services
+# on that network reach each other by service name (e.g. "sqlserver",
+# "redis"), never "localhost" — this is exactly what removes Day 58's
+# named-instance/UDP-discovery problem: no named instance, no discovery
+# step, just a fixed container name and a fixed port.
+#
+# SA_PASSWORD comes from a local .env file (gitignored) — never written
+# here directly. A Linux SQL Server container only supports SQL
+# Authentication (no Windows Authentication), so this is a real secret,
+# not a demo stand-in, injected the same way Day 57 proved: an environment
+# variable, never a checked-in file.
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD}
+    ports:
+      - "14330:1433"
+    networks:
+      - fieldops
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "63790:6379"
+    networks:
+      - fieldops
+
+  fieldops-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - sqlserver
+      - redis
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__FieldOpsOrganizationsDb: "Server=sqlserver;Database=FieldOpsOrganizations;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
+      ConnectionStrings__FieldOpsEmployeesDb: "Server=sqlserver;Database=FieldOpsEmployees;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
+      ConnectionStrings__FieldOpsWorkOrdersDb: "Server=sqlserver;Database=FieldOpsWorkOrders;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
+      ConnectionStrings__FieldOpsCustomersDb: "Server=sqlserver;Database=FieldOpsCustomers;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
+      ConnectionStrings__FieldOpsAuditLogsDb: "Server=sqlserver;Database=FieldOpsAuditLogs;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
+      Redis__ConnectionString: "redis:6379"
+    ports:
+      - "5190:8080"
+    networks:
+      - fieldops
+
+networks:
+  fieldops:

@@ -71,6 +71,7 @@ logs/
 ## Secrets and environment files
 .env
 .env.*
+!.env.example
 *.secrets.json
 appsettings.*.local.json
 appsettings.Development.json.user
