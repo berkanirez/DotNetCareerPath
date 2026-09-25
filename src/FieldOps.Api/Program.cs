@@ -83,6 +83,16 @@ builder.Services.AddSingleton<IdempotencyService>();
 // alone, with zero controller changes.
 builder.Services.AddSingleton<INotificationSender, LoggingNotificationSender>();
 
+// Day 63: AI provider abstraction — the same shape as Day 51's
+// INotificationSender above. WorkOrderNoteSummaryService only ever depends
+// on IAiProvider; a real provider (OpenAI/Anthropic) would later replace
+// this one registration, with zero changes to the controller or the
+// summary service itself. Both are Singletons: FakeAiProvider holds no
+// state, and WorkOrderNoteSummaryService's only dependency is that same
+// stateless Singleton.
+builder.Services.AddSingleton<IAiProvider, FakeAiProvider>();
+builder.Services.AddSingleton<WorkOrderNoteSummaryService>();
+
 // Day 53: per-organization rate limiting — resource/performance isolation,
 // the natural counterpart to Week 8's data isolation (a tenant can't see
 // another tenant's data; now, a tenant can't degrade another tenant's

@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using FieldOps.Api.Application;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FieldOps.Api.Tests;
 
@@ -55,6 +58,33 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    // Day 61: a coverage audit found that Create shares ValidateMembership
+    // with GetAll, but — unlike GetAll — had never gotten its own dedicated
+    // tests for the same checks. Same header-missing/cross-org scenarios,
+    // proven directly against Create this time, not inferred from GetAll's
+    // coverage of a shared helper.
+    [Fact]
+    public async Task Create_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/workorders", new { Title = "Should-Never-Be-Created" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_ByEmployeeFromAnotherOrganization_ReturnsForbidden()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Organization-Id", "2");
+        client.DefaultRequestHeaders.Add("X-Employee-Id", "1"); // seeded Org1 Admin, claiming Org 2's header
+
+        var response = await client.PostAsJsonAsync("/api/workorders", new { Title = "Should-Never-Be-Created" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task Create_ThenGetAll_ScopedToOwnOrganization()
     {
@@ -77,6 +107,21 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
 
         Assert.Contains(org1WorkOrders!, w => w.Title == $"Org1-Only-{uniqueSuffix}");
         Assert.DoesNotContain(org2WorkOrders!, w => w.Title == $"Org1-Only-{uniqueSuffix}");
+    }
+
+    // Day 62: audit continuation — Assign shares ValidateMembership with
+    // GetAll/Create but never had its own dedicated test proving the check
+    // is actually still wired up here. A valid body is sent (only the
+    // headers are omitted) so a 400 can only mean ValidateMembership fired,
+    // never [ApiController]'s own unrelated model-validation.
+    [Fact]
+    public async Task Assign_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/workorders/999999/assign", new { EmployeeId = 1 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -196,6 +241,19 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
         return (await assignResponse.Content.ReadFromJsonAsync<WorkOrderDto>())!;
     }
 
+    // Day 62: audit continuation — same reasoning as Assign's new test
+    // above. Start takes no body, so nothing else could produce a 400 here
+    // besides ValidateMembership.
+    [Fact]
+    public async Task Start_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsync("/api/workorders/999999/start", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Start_ByAssignedEmployee_TransitionsToInProgress()
     {
@@ -255,6 +313,17 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
         Assert.Equal(HttpStatusCode.Forbidden, startResponse.StatusCode);
     }
 
+    // Day 62: audit continuation — same reasoning as Assign/Start above.
+    [Fact]
+    public async Task Complete_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsync("/api/workorders/999999/complete", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Complete_ByAssignedEmployee_TransitionsToCompleted()
     {
@@ -302,6 +371,17 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
         var response = await org1AdminClient.PostAsJsonAsync("/api/employees", new { Name = name });
         var body = await response.Content.ReadFromJsonAsync<EmployeeDto>();
         return body!.Id;
+    }
+
+    // Day 62: audit continuation — same reasoning as Assign's new test.
+    [Fact]
+    public async Task Reassign_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/workorders/999999/reassign", new { EmployeeId = 1 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -452,6 +532,18 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
         Assert.Equal(HttpStatusCode.BadRequest, reassignResponse.StatusCode);
     }
 
+    // Day 62: audit continuation — Unassign takes no body, so nothing else
+    // could produce a 400 here besides ValidateMembership.
+    [Fact]
+    public async Task Unassign_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsync("/api/workorders/999999/unassign", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Unassign_ByAdmin_ReturnsToOpenWithNoAssignee()
     {
@@ -547,6 +639,18 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
         return (await completeResponse.Content.ReadFromJsonAsync<WorkOrderDto>())!;
     }
 
+    // Day 62: audit continuation — Reopen takes no body, so nothing else
+    // could produce a 400 here besides ValidateMembership.
+    [Fact]
+    public async Task Reopen_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsync("/api/workorders/999999/reopen", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Reopen_ByAdmin_ReturnsToInProgress()
     {
@@ -622,6 +726,18 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
         Assert.Equal(HttpStatusCode.BadRequest, reopenResponse.StatusCode);
     }
 
+    // Day 62: audit continuation, closing out the sweep — a valid body is
+    // sent so a 400 can only mean ValidateMembership fired.
+    [Fact]
+    public async Task AddEvidence_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/workorders/999999/evidence", new { Note = "irrelevant" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task AddEvidence_ByAssignee_Succeeds()
     {
@@ -673,6 +789,106 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
         Assert.Equal(HttpStatusCode.Forbidden, evidenceResponse.StatusCode);
     }
 
+    // Day 63: applies Day 61/62's own lesson from day one — this brand new
+    // action gets its own ValidateMembership test immediately, not
+    // retroactively after an audit finds it missing.
+    [Fact]
+    public async Task GetSummary_NoOrganizationHeader_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.GetAsync("/api/workorders/999999/summary");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetSummary_WithEvidenceNotes_ReturnsFakeAiProviderSummary()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var assigned = await CreateAndAssignWorkOrderAsync(org1AdminClient, $"Needs-Summary-{Guid.NewGuid():N}", assigneeEmployeeId: 2);
+
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var noteText = $"Checked the pump-{Guid.NewGuid():N}";
+        await org1MemberClient.PostAsJsonAsync($"/api/workorders/{assigned.Id}/evidence", new { Note = noteText });
+
+        var summaryResponse = await org1AdminClient.GetAsync($"/api/workorders/{assigned.Id}/summary");
+        var summary = await summaryResponse.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, summaryResponse.StatusCode);
+        Assert.Contains(noteText, summary);
+        Assert.Contains("[Fake AI summary]", summary); // proves FakeAiProvider, not a real provider, answered this
+    }
+
+    [Fact]
+    public async Task GetSummary_WithNoEvidenceNotes_ReturnsPlaceholder()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+
+        var createResponse = await org1AdminClient.PostAsJsonAsync("/api/workorders", new { Title = $"No-Notes-Yet-{Guid.NewGuid():N}" });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+
+        var summaryResponse = await org1AdminClient.GetAsync($"/api/workorders/{created!.Id}/summary");
+        var summary = await summaryResponse.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, summaryResponse.StatusCode);
+        Assert.Contains("No evidence notes", summary);
+    }
+
+    // Day 64: failure-scenario coverage for the new IAiProvider seam —
+    // FakeAiProvider never fails, so without a dedicated test like this, a
+    // real provider's genuine failure modes (timeout, network error, rate
+    // limit) would stay completely unexercised until one actually exists.
+    // WithWebHostBuilder builds a separate, one-off host that reuses the
+    // shared factory's Testcontainers database but swaps in a provider that
+    // always throws, without touching the shared _factory used by every
+    // other test in this class.
+    //
+    // A real, live-caught mistake while writing this test: the first version
+    // never added an evidence note to the work order before calling
+    // /summary. WorkOrderNoteSummaryService's own "no notes" short-circuit
+    // (Day 63) returns its placeholder WITHOUT ever calling IAiProvider — so
+    // the test passed for the wrong reason regardless of which provider was
+    // registered, exactly the same class of false-positive risk Day 62
+    // already caught once for an empty request body. An evidence note is
+    // added first so the call genuinely reaches (and fails through)
+    // ThrowingAiProvider.
+    [Fact]
+    public async Task GetSummary_WhenAiProviderFails_ReturnsServiceUnavailable()
+    {
+        var brokenAiClient = _factory
+            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+                services.AddSingleton<IAiProvider, ThrowingAiProvider>()))
+            .CreateClient();
+        brokenAiClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        brokenAiClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+
+        var createResponse = await brokenAiClient.PostAsJsonAsync("/api/workorders", new { Title = $"AI-Failure-{Guid.NewGuid():N}" });
+        var created = await createResponse.Content.ReadFromJsonAsync<WorkOrderDto>();
+        await brokenAiClient.PostAsJsonAsync($"/api/workorders/{created!.Id}/assign", new { EmployeeId = 1 }); // self-assign, so the same client can add evidence
+        await brokenAiClient.PostAsJsonAsync($"/api/workorders/{created.Id}/evidence", new { Note = "Checked the pump." });
+
+        var summaryResponse = await brokenAiClient.GetAsync($"/api/workorders/{created.Id}/summary");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, summaryResponse.StatusCode);
+    }
+
+    // Registered only for the test above, overriding the real FakeAiProvider
+    // registration — simulates a real AI provider genuinely failing (a
+    // timeout, a network error), something FakeAiProvider itself can never
+    // do since it's deterministic and offline by design.
+    private class ThrowingAiProvider : IAiProvider
+    {
+        public Task<string> SummarizeAsync(string prompt, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Simulated AI provider outage.");
+    }
+
     // Day 47: a full lifecycle, this time linked to a customer (seeded
     // Org1 customer, id=1) from creation, taken all the way to Completed —
     // the only state Approve accepts.
@@ -706,6 +922,29 @@ public class WorkOrdersAuthorizationIntegrationTests : IClassFixture<FieldOpsApi
 
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
         Assert.True(approved!.CustomerApproved);
+    }
+
+    // Day 61: coverage audit found Approve's explicit header-missing checks
+    // (X-Organization-Id, X-Customer-Id) had code but no test — unlike every
+    // other action's membership/identity checks in this file.
+    [Fact]
+    public async Task Approve_NoCustomerHeader_ReturnsBadRequest()
+    {
+        var org1AdminClient = _factory.CreateClient();
+        org1AdminClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1AdminClient.DefaultRequestHeaders.Add("X-Employee-Id", "1");
+        var org1MemberClient = _factory.CreateClient();
+        org1MemberClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        org1MemberClient.DefaultRequestHeaders.Add("X-Employee-Id", "2");
+        var completed = await CompleteFullLifecycleWithCustomerAsync(org1AdminClient, org1MemberClient, $"No-Customer-Header-{Guid.NewGuid():N}", assigneeEmployeeId: 2, customerId: 1);
+
+        var noHeaderClient = _factory.CreateClient();
+        noHeaderClient.DefaultRequestHeaders.Add("X-Organization-Id", "1");
+        // X-Customer-Id deliberately omitted.
+
+        var approveResponse = await noHeaderClient.PostAsync($"/api/workorders/{completed.Id}/approve", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, approveResponse.StatusCode);
     }
 
     [Fact]

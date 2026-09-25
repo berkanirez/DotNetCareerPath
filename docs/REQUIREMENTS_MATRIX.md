@@ -68,7 +68,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Unit testing | 3 | Phase 1–6 | Unit test | 3 | In Progress |
 | Mocking | 3 | Phase 2 | Unit test | 0 | Planned |
 | TDD | 2 | Phase 1 | Unit test, commit | 1 | In Progress |
-| Integration testing | 3 | Phase 2–4 | Integration test | 0 | Planned |
+| Integration testing | 3 | Phase 2–4 | Integration test | 3 | In Progress |
 | Test automation | 3 | Phase 2, 6 | Integration test, deployment | 0 | Planned |
 | Redis | 3 | Phase 3 | Working endpoint, debugging note | 3 | In Progress |
 | Elasticsearch | 2 | Phase 4 | Working endpoint | 0 | Planned |
@@ -78,8 +78,8 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Outbox/Inbox | 3 | Phase 4 | Unit test, integration test | 0 | Planned |
 | Modular monolith | 3 | Phase 3 | ADR, commit | 0 | Planned |
 | Microservices | 2 | Phase 4 | ADR, deployment | 0 | Planned |
-| Docker | 3 | Phase 3–5 | Deployment, commit | 0 | Planned |
-| CI/CD | 3 | Phase 2–6 | Deployment, pull request | 0 | Planned |
+| Docker | 3 | Phase 3–5 | Deployment, commit | 2 | In Progress |
+| CI/CD | 3 | Phase 2–6 | Deployment, pull request | 2 | In Progress |
 | Kubernetes | 2 | Phase 5 | Deployment | 0 | Planned |
 | Azure | 2 | Phase 5 | Deployment | 0 | Planned |
 | Performance | 3 | Phase 6 | Load-test result, debugging note | 0 | Planned |

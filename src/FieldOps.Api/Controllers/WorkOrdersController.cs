@@ -28,6 +28,7 @@ public class WorkOrdersController : ControllerBase
     private readonly INotificationSender _notificationSender;
     private readonly IAuditLogWriter _auditLogWriter;
     private readonly IdempotencyService _idempotencyService;
+    private readonly WorkOrderNoteSummaryService _workOrderNoteSummaryService;
     private readonly ILogger<WorkOrdersController> _logger;
 
     public WorkOrdersController(
@@ -39,6 +40,7 @@ public class WorkOrdersController : ControllerBase
         INotificationSender notificationSender,
         IAuditLogWriter auditLogWriter,
         IdempotencyService idempotencyService,
+        WorkOrderNoteSummaryService workOrderNoteSummaryService,
         ILogger<WorkOrdersController> logger)
     {
         _workOrderDirectory = workOrderDirectory;
@@ -49,6 +51,7 @@ public class WorkOrdersController : ControllerBase
         _notificationSender = notificationSender;
         _auditLogWriter = auditLogWriter;
         _idempotencyService = idempotencyService;
+        _workOrderNoteSummaryService = workOrderNoteSummaryService;
         _logger = logger;
     }
 
@@ -418,6 +421,50 @@ public class WorkOrdersController : ControllerBase
         }
 
         return Ok(ToDto(updated));
+    }
+
+    // Day 63: the first read that goes through the new IAiProvider seam.
+    // Reuses ValidateMembership only — not ValidateOwnership — since reading
+    // a summary of already-recorded evidence is a plain organization-wide
+    // read, the same access level as GetAll/GetStatusReport, not an
+    // ownership-restricted action like Start/Complete/AddEvidence.
+    //
+    // Day 64: unlike Complete's notification (Day 51), where a failure is a
+    // side effect that must never block an already-successful state change,
+    // the summary IS this action's entire purpose — a failure here can't be
+    // silently swallowed, but it also shouldn't surface as a raw, unhelpful
+    // 500. A real AI provider can fail (timeout, network error, rate limit)
+    // in ways FakeAiProvider never does, so this boundary is exercised
+    // deliberately, not left untested until a real provider exists.
+    [HttpGet("{id}/summary")]
+    public async Task<ActionResult<string>> GetSummary(
+        int id,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId,
+        CancellationToken cancellationToken)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var workOrder = _workOrderDirectory.GetById(id);
+        if (workOrder is null || workOrder.OrganizationId != organizationId)
+        {
+            return BadRequest($"Work order {id} does not exist.");
+        }
+
+        try
+        {
+            var summary = await _workOrderNoteSummaryService.SummarizeAsync(workOrder.EvidenceNotes, cancellationToken);
+            return Ok(summary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to generate AI summary for work order {WorkOrderId}", id);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "AI summary service is temporarily unavailable. Please try again later.");
+        }
     }
 
     // Day 47: a FOURTH kind of authorization actor — not an Employee at

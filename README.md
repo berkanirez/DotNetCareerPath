@@ -24,11 +24,11 @@ A long-term, project-based learning workspace to transfer Berkan's existing prof
 
 ## Current status
 
-* **Phase:** Phase 1 — RoadmapOS (V1 released); Phase 2 — StockPilot Inventory and Order API (Weeks 3-6 complete)
-* **Project:** StockPilot Inventory and Order API
-* **Week:** 6 (final week of Phase 2)
-* **Day:** 31
-* **Progress:** ~27%
+* **Phase:** Phase 1 — RoadmapOS (V1 released); Phase 2 — StockPilot Inventory and Order API (complete); Phase 3 — FieldOps SaaS Modular Monolith (Weeks 7-12, nearly complete)
+* **Project:** FieldOps SaaS Modular Monolith
+* **Week:** 12 (final week of Phase 3)
+* **Day:** 65
+* **Progress:** ~59%
 
 See [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) for full detail.
 
@@ -121,6 +121,89 @@ dotnet test
 * `InMemoryRefreshTokenStore` (currently the app's real, registered implementation) is lost on every app restart and never shared across multiple server instances — production needs a shared store (a database table or Redis).
 * Only a `Product` domain exists — the "Order API" half of StockPilot's name (orders, warehouses, inventory movements, stock reservations) has not been built yet; policy-based authorization (`CanManageProducts`) is scoped only to what exists today.
 * No rate limiting, no refresh-token-family revocation on detected reuse, no HTTPS certificate pinning — reasonable gaps for a learning project, not claimed as production-hardened.
+
+## FieldOps SaaS Modular Monolith (Phase 3 project)
+
+FieldOps is a multi-tenant field-service management backend built as a **modular monolith**: five independent modules (Organizations, Employees, Customers, Work Orders, Audit Logs), each its own class library with `internal` domain entities and its own physically separate SQL Server database, exposing only a public DTO and interface to the host API. Work orders move through a full lifecycle (Open → Assigned → InProgress → Completed, with reassignment, reopening, and customer approval), guarded by tenant-isolation and role/ownership-based authorization tested across every action. Redis backs a cache-aside status report with a background cache warmer; audit logs, per-organization rate limiting, and idempotency round out the production-minded concerns. A generic `IAiProvider` abstraction (with a deterministic fake implementation) powers an AI-generated summary of a work order's evidence notes, with its own failure-handling path. Structured logging (with correlation IDs) and `/health/live` + `/health/ready` endpoints support debugging; the whole stack (API, SQL Server, Redis) runs via Docker Compose and is exercised by CI on every push.
+
+### Prerequisites
+
+* .NET 10 SDK
+* Docker — required either way: to run FieldOps itself via Docker Compose (recommended), or to run its integration test suite (`tests/FieldOps.Api.Tests`), which spins up its own disposable SQL Server container via Testcontainers regardless of how the app itself is run.
+
+### Running it locally (Docker Compose — recommended)
+
+```
+cp .env.example .env
+# edit .env and set a real SA_PASSWORD
+docker compose up --build -d
+```
+
+Then, once the containers are up, apply migrations for all five modules against the containerized SQL Server (exposed on `localhost,14330`) — repeat for each module directory:
+
+```
+cd src/FieldOps.Modules.Organizations && dotnet ef database update --connection "Server=localhost,14330;Database=FieldOpsOrganizations;User Id=sa;Password=<your SA_PASSWORD>;TrustServerCertificate=True;" && cd ../..
+# ...same pattern for FieldOps.Modules.Employees, FieldOps.Modules.WorkOrders, FieldOps.Modules.Customers, FieldOps.Modules.AuditLogs
+```
+
+Then visit:
+
+* `http://localhost:5190/health/ready` — should report every dependency `Healthy`
+* `http://localhost:5190/api/organizations` — seeded organizations
+* `http://localhost:5190/api/workorders` — requires `X-Organization-Id` and `X-Employee-Id` headers (see below)
+
+Tear down with `docker compose down`.
+
+### Running it locally (without Docker Compose)
+
+* A local SQL Server instance (`localhost\SQLEXPRESS`, Windows Authentication) and a local Redis instance (e.g. `docker run -d -p 6379:6379 redis:7-alpine`) are required — connection strings are in `src/FieldOps.Api/appsettings.Development.json`.
+* Apply migrations the same way as above, once per module directory, but with plain `dotnet ef database update` (each module's own `*DbContextFactory.cs` already points at `localhost\SQLEXPRESS`).
+* `cd src/FieldOps.Api && dotnet run`.
+
+### Seeded demo identities
+
+Every request needs an `X-Organization-Id` header, and (for employee-acting endpoints) an `X-Employee-Id` header, or (for the customer-approval endpoint) an `X-Customer-Id` header — there is no real authentication yet (see "Known simplifications" below).
+
+| Organization | Employee (Admin) | Employee (Member) | Customer |
+|---|---|---|---|
+| 1 | id `1` | id `2` | id `1` |
+| 2 | id `3` | id `4` | — |
+
+Example: create a work order as Org 1's Admin, assign it (evidence can only be added by the assignee), add an evidence note, then read its AI-generated summary:
+
+```
+curl -X POST http://localhost:5190/api/workorders \
+  -H "X-Organization-Id: 1" -H "X-Employee-Id: 1" -H "Content-Type: application/json" \
+  -d '{"Title":"Fix the HVAC unit"}'
+
+curl -X POST http://localhost:5190/api/workorders/1/assign \
+  -H "X-Organization-Id: 1" -H "X-Employee-Id: 1" -H "Content-Type: application/json" \
+  -d '{"EmployeeId":1}'
+
+curl -X POST http://localhost:5190/api/workorders/1/evidence \
+  -H "X-Organization-Id: 1" -H "X-Employee-Id: 1" -H "Content-Type: application/json" \
+  -d '{"Note":"Checked the compressor, replaced the filter."}'
+
+curl http://localhost:5190/api/workorders/1/summary -H "X-Organization-Id: 1" -H "X-Employee-Id: 1"
+# => "[Fake AI summary] Summarize the following field service evidence notes in one or two sentences:\n1. Checked the compressor, replaced the filter."
+```
+
+### Running the tests
+
+```
+dotnet test FieldOps.slnx
+```
+
+Every test is a real HTTP integration test against a disposable, Testcontainers-managed SQL Server — **Docker must be running**. There is no separate unit-test-only subset that skips Docker, aside from `WorkOrderNoteSummaryServiceTests.cs`, which uses hand-written fakes and needs no infrastructure at all.
+
+### Known simplifications
+
+* `X-Organization-Id` / `X-Employee-Id` / `X-Customer-Id` are plain, unverified client-supplied headers — there is no real authentication (login, tokens) yet, unlike StockPilot's JWT-based auth.
+* No real AI provider is integrated — `IAiProvider`'s only implementation (`FakeAiProvider`) is deterministic and offline, proving the abstraction and its failure-handling path work, not that it produces a genuinely useful summary.
+* Evidence "attachments" are plain text notes — no real file/photo upload infrastructure exists.
+* Each module's database-per-module design (ADR 0003) means there are no real cross-module foreign keys — cross-module references are validated in application code, not enforced by the database.
+* Rate limiting and idempotency have no automated behavioral/threshold tests (Redis's unreliability in CI at the time) — verified live instead, a documented and deliberate trade-off, not an oversight.
+* Migrations are applied by hand (or a CI retry loop) against the Compose stack — a real deployment would use a dedicated one-off migration job.
 
 ## Documentation
 
