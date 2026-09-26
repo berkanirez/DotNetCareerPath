@@ -5,13 +5,13 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Status snapshot
 
 * **Setup phase:** Complete
-* **Roadmap phase:** Phase 3 — FieldOps SaaS Modular Monolith — **complete**. Phase 4 — Distributed FieldOps begins Day 66.
-* **Week:** 12 — **complete**. Week 13 (Phase 4's first week) begins next.
-* **Day:** 65 (complete)
-* **Active project:** FieldOps SaaS Modular Monolith (Phase 4 will extend it, not replace it)
-* **Status:** Phase 3's completion gate (`docs/ROADMAP.md`) checked item by item, all 7 confirmed with evidence. Root `README.md` updated: a real "FieldOps SaaS Modular Monolith" section added (how to run it via Docker Compose or locally, seeded demo identities, example requests, known simplifications), verified live end to end via a real `docker compose up` run. **Phase 3 — FieldOps SaaS Modular Monolith is complete.**
+* **Roadmap phase:** Phase 4 — Distributed FieldOps, **Week 13 (first week of Phase 4)** (Phase 3 — FieldOps SaaS Modular Monolith — complete)
+* **Week:** 13 — in progress (Week 12 complete)
+* **Day:** 66 (complete)
+* **Active project:** FieldOps SaaS Modular Monolith (Phase 4 extends it, doesn't replace it)
+* **Status:** RabbitMQ added to the Docker Compose stack (`rabbitmq:3-management`); a temporary, Development-only demonstration block in `Program.cs` proved a message genuinely travels FieldOps.Api → RabbitMQ → back to FieldOps.Api (publish + async consume + manual ack), verified live via logs and RabbitMQ's own management API. No domain event and no change to `WorkOrdersController`/`INotificationSender` yet — today only proved the mechanism itself works.
 * **Available study time:** 2 hours/day
-* **Progress:** ~59% (Day 65 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~60% (Day 66 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -502,6 +502,15 @@ This file reflects the actual current state of the learning journey. It must alw
 * No application code changed today — `dotnet test FieldOps.slnx` → 65/65 (unchanged); `dotnet build StockPilot.slnx`/`RoadmapOS.slnx` → both clean.
 * The end-of-session Q&A was declined in favor of moving straight to Day 66 planning ("geçelim"); all three understanding questions were answered by Claude directly instead, recorded honestly: (1) why the README's first example returned `403 Forbidden` — `AddEvidence`'s ownership check, caught by actually running the example rather than assuming it from memory of the code; (2) why "Project is added to the CV" was only partially satisfied today — a polished, interview-ready CV/LinkedIn entry is explicitly Week 22's own separate job; today only produced its prerequisite (an accurate, working README); (3) why CV bullet points/a five-minute demo weren't produced today — CLAUDE.md's scope-control rule against implementing future roadmap phases early; the roadmap deliberately separates "does it work and is it explained accurately" (Week 12) from "is it polished for outside consumption" (Week 22). The independent task (verifying live that an Org 2 Admin gets `403 Forbidden` reading Org 1's work order) was skipped.
 * **Week 12 is complete. Phase 3 — FieldOps SaaS Modular Monolith is complete.** All 6 weeks (7-12) and their roadmap topics are done, and the phase's completion gate is satisfied with recorded evidence for all 7 items.
+* **Day 66.** First day of Phase 4 — Distributed FieldOps. Topic: synchronous versus asynchronous communication, RabbitMQ setup. The motivating problem was drawn directly from existing code — `WorkOrdersController.Complete`'s Day 51 `await _notificationSender.NotifyAsync(...)` call is a synchronous dependency that would block/couple the request to a real notification channel's availability and latency.
+* `docker-compose.yml`: new `rabbitmq` service (`rabbitmq:3-management`, AMQP port 5672 + management UI port 15672), added to `fieldops-api`'s `depends_on` and environment (`RabbitMq__HostName: "rabbitmq"`), following the exact same shared-network, service-name-addressing pattern as Day 59's `sqlserver`/`redis`.
+* `src/FieldOps.Api/appsettings.Development.json`: `RabbitMq:HostName: "localhost"` for running outside Docker Compose.
+* `RabbitMQ.Client` 7.2.2 added to `FieldOps.Api`. A real, live investigation: rather than guessing this version's (fully async) API signatures from memory, a throwaway console project was built specifically to reflect `IChannel`'s actual method signatures — confirming `BasicConsumeAsync` and `BasicPublishAsync` both require parameters with no defaults that memory alone would have gotten wrong, avoiding a guess-compile-fix loop.
+* `Program.cs`: a temporary, `Development`-only demonstration block (explicitly marked TEMP, to be deleted once a real producer/consumer replaces it) — declares a queue, publishes one message, and consumes it via an async event handler with manual acknowledgment, all wrapped in `try`/`catch` so RabbitMQ being unreachable degrades to a warning log rather than crashing the host.
+* A real, live-caught repeat of Day 59/60's own lesson: the first `docker compose up` run produced a genuine `BrokerUnreachableException` — RabbitMQ's container had started but its broker process wasn't yet accepting connections when `fieldops-api` ran the demo block, the exact same `depends_on`-doesn't-mean-ready gap, now against a new dependency. The `try`/`catch` handled it gracefully; restarting only the API container once RabbitMQ had finished starting produced a full publish → consume success, independently confirmed via RabbitMQ's own management API (`"message_stats":{"ack":1,"deliver":1}`).
+* `docs/daily-code-notes/day-66.md` created (Turkish) and substantially expanded at Berkan's explicit request: a full from-scratch "what is RabbitMQ, why does it help" section (producer/exchange/queue/routing-key/consumer/ack explained via a postal-service analogy, tied back to the real `Complete`/notification example), plus the `Program.cs` demo block rewritten with an inline `//` comment under every line, matching Berkan's requested format exactly.
+* No application code was touched beyond the temporary demo block — `dotnet test FieldOps.slnx` → 65/65 (unchanged). `dotnet build StockPilot.slnx`/`RoadmapOS.slnx` → both clean.
+* The end-of-session Q&A: Q1 ("bilmiyorum") and Q3 ("bilmiyorum") answered by Claude directly; Q2 was partially answered correctly by Berkan (identified that `BasicAckAsync` tells RabbitMQ "I've read this"), with Claude filling in the missing contrast (`autoAck: true` would delete the message on delivery, before it's actually processed, risking silent loss if the consumer crashed mid-processing). The independent task (checking the RabbitMQ management UI for the demo queue) was not done by Berkan; Claude answered directly, pointing to already-gathered evidence from this same session (the management API's `curl` check) rather than re-verifying. Berkan confirmed pushing today's code himself.
 
 ## Decisions on record
 
@@ -529,6 +538,6 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 4 — Distributed FieldOps, **Week 13**, Day 66 — Phase 3 is fully complete. Week 13's roadmap topics: synchronous versus asynchronous communication, RabbitMQ, exchanges, queues, routing keys, producers and consumers, domain events, integration events. Exact Day 66 scope to be confirmed at the start of the session, per the standing planning protocol.
+2. Continue Phase 4 — Distributed FieldOps, **Week 13**, Day 67 — RabbitMQ itself is up and proven reachable (Docker Compose, a live publish/consume round-trip). No domain event exists yet and `WorkOrdersController`/`INotificationSender` haven't been touched. Day 67's likely task: publish a real domain event (e.g. `WorkOrderCompleted`) from `Complete`, alongside or in place of Day 51's synchronous notification call. Exact scope to be confirmed at the start of the session, per the standing planning protocol.
 3. Wait for approval (`UYGULA`) before creating or editing any application files.
 

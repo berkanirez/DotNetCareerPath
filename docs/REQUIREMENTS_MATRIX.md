@@ -72,7 +72,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Test automation | 3 | Phase 2, 6 | Integration test, deployment | 0 | Planned |
 | Redis | 3 | Phase 3 | Working endpoint, debugging note | 3 | In Progress |
 | Elasticsearch | 2 | Phase 4 | Working endpoint | 0 | Planned |
-| RabbitMQ | 3 | Phase 4 | Working user flow, debugging note | 0 | Planned |
+| RabbitMQ | 3 | Phase 4 | Working user flow, debugging note | 2 | In Progress |
 | Kafka concepts | 1 | Phase 4 (conceptual only) | English technical explanation | 0 | Planned |
 | Event-driven architecture | 3 | Phase 4 | ADR, working user flow | 0 | Planned |
 | Outbox/Inbox | 3 | Phase 4 | Unit test, integration test | 0 | Planned |

@@ -1,3 +1,4 @@
+using FieldOps.Api.Application;
 using FieldOps.Modules.AuditLogs.Data;
 using FieldOps.Modules.Customers.Data;
 using FieldOps.Modules.Employees.Data;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.MsSql;
 
 namespace FieldOps.Api.Tests;
@@ -79,6 +81,30 @@ public class FieldOpsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         // business-logic tests never fail for an unrelated reason; the
         // actual 429 threshold is verified live, not by an automated test.
         builder.UseSetting("RateLimiting:PerOrganization:PermitLimit", "100000");
+
+        // Day 67: real, live-caught test-suite slowdown — every test calling
+        // Complete now tries to open a genuine RabbitMQ connection, which
+        // has no chance of succeeding here (no RabbitMQ container in this
+        // test environment) and only fails after its own connection
+        // timeout. The full suite's run time roughly doubled before this
+        // override was added. Same fix shape as Day 53's rate-limiting
+        // override: swap out the real, slow, externally-dependent
+        // implementation for a fast no-op, using the exact
+        // ConfigureServices-runs-after-Program.cs mechanism Day 64 already
+        // proved (there, to inject a failing fake; here, to inject a
+        // free one).
+        builder.ConfigureServices(services =>
+        {
+            services.AddSingleton<IEventPublisher, NoOpEventPublisher>();
+        });
+    }
+
+    // Deliberately does nothing and never fails — these tests care about
+    // WorkOrdersController's own behavior, not about proving RabbitMQ
+    // connectivity (Day 66/67 already proved that live, separately).
+    private class NoOpEventPublisher : IEventPublisher
+    {
+        public Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     // "new", not "override" — same reason as StockPilot's version (Day 28):

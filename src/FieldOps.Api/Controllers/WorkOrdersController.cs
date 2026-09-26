@@ -29,6 +29,7 @@ public class WorkOrdersController : ControllerBase
     private readonly IAuditLogWriter _auditLogWriter;
     private readonly IdempotencyService _idempotencyService;
     private readonly WorkOrderNoteSummaryService _workOrderNoteSummaryService;
+    private readonly IEventPublisher _eventPublisher;
     private readonly ILogger<WorkOrdersController> _logger;
 
     public WorkOrdersController(
@@ -41,6 +42,7 @@ public class WorkOrdersController : ControllerBase
         IAuditLogWriter auditLogWriter,
         IdempotencyService idempotencyService,
         WorkOrderNoteSummaryService workOrderNoteSummaryService,
+        IEventPublisher eventPublisher,
         ILogger<WorkOrdersController> logger)
     {
         _workOrderDirectory = workOrderDirectory;
@@ -52,6 +54,7 @@ public class WorkOrdersController : ControllerBase
         _auditLogWriter = auditLogWriter;
         _idempotencyService = idempotencyService;
         _workOrderNoteSummaryService = workOrderNoteSummaryService;
+        _eventPublisher = eventPublisher;
         _logger = logger;
     }
 
@@ -370,6 +373,23 @@ public class WorkOrdersController : ControllerBase
 
         _workOrderReportService.InvalidateCache(organizationId!.Value);
         _auditLogWriter.Record(organizationId!.Value, id, "Completed", "Employee", actingEmployeeId!.Value);
+
+        // Day 67: FieldOps's first domain event, published alongside (not
+        // instead of) the notification below — a future consumer (a separate
+        // notification service, a reporting service) can react to this
+        // independently, without FieldOps.Api ever needing to know it exists.
+        // Same fail-open reasoning as the notification call: a failed publish
+        // must never fail the completion itself.
+        try
+        {
+            await _eventPublisher.PublishAsync(
+                new WorkOrderCompletedEvent(updated.Id, updated.OrganizationId, updated.CustomerId, updated.Title, DateTime.UtcNow),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to publish WorkOrderCompletedEvent for work order {WorkOrderId}", id);
+        }
 
         // A failed notification must never fail the completion itself — the
         // work order is already, genuinely, Completed at this point.
