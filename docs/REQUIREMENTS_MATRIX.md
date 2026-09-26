@@ -76,7 +76,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Kafka concepts | 1 | Phase 4 (conceptual only) | English technical explanation | 0 | Planned |
 | Event-driven architecture | 3 | Phase 4 | ADR, working user flow | 0 | Planned |
 | Outbox/Inbox | 3 | Phase 4 | Unit test, integration test | 0 | Planned |
-| Modular monolith | 3 | Phase 3 | ADR, commit | 0 | Planned |
+| Modular monolith | 3 | Phase 3 | ADR, commit | 3 | In Progress |
 | Microservices | 2 | Phase 4 | ADR, deployment | 0 | Planned |
 | Docker | 3 | Phase 3–5 | Deployment, commit | 2 | In Progress |
 | CI/CD | 3 | Phase 2–6 | Deployment, pull request | 2 | In Progress |

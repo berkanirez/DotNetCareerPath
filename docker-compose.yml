@@ -28,6 +28,20 @@ services:
     networks:
       - fieldops
 
+  # Day 66: RabbitMQ — the message broker for Phase 4's move toward
+  # asynchronous, decoupled communication. The "-management" image variant
+  # bundles a web management UI (port 15672) purely so today's demonstration
+  # can be observed visually, not just through logs. Same shared-network,
+  # addressed-by-service-name pattern as sqlserver/redis above — no
+  # discovery step, no named instance, just "rabbitmq" and a fixed port.
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - fieldops
+
   fieldops-api:
     build:
       context: .
@@ -35,6 +49,7 @@ services:
     depends_on:
       - sqlserver
       - redis
+      - rabbitmq
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__FieldOpsOrganizationsDb: "Server=sqlserver;Database=FieldOpsOrganizations;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
@@ -43,6 +58,7 @@ services:
       ConnectionStrings__FieldOpsCustomersDb: "Server=sqlserver;Database=FieldOpsCustomers;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
       ConnectionStrings__FieldOpsAuditLogsDb: "Server=sqlserver;Database=FieldOpsAuditLogs;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
       Redis__ConnectionString: "redis:6379"
+      RabbitMq__HostName: "rabbitmq"
     ports:
       - "5190:8080"
     networks:

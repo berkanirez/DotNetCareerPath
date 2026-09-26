@@ -205,4 +205,55 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 
 app.MapControllers();
 
+// Day 66: TEMP demonstration block — proves a message genuinely travels
+// FieldOps.Api -> RabbitMQ -> back to FieldOps.Api, before any real domain
+// event is wired up. Development-only and deliberately temporary (the same
+// role RoadmapOS Day 2's console verification block played): today's goal
+// is "does the mechanism work at all," not a production feature. Removed
+// once a real producer/consumer replaces it.
+if (app.Environment.IsDevelopment())
+{
+    var rabbitMqHostName = builder.Configuration["RabbitMq:HostName"] ?? "localhost";
+    var factory = new RabbitMQ.Client.ConnectionFactory { HostName = rabbitMqHostName };
+
+    try
+    {
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+
+        const string queueName = "fieldops.day66.demo";
+        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: false);
+
+        var consumer = new RabbitMQ.Client.Events.AsyncEventingBasicConsumer(channel);
+        consumer.ReceivedAsync += async (_, ea) =>
+        {
+            var received = System.Text.Encoding.UTF8.GetString(ea.Body.ToArray());
+            app.Logger.LogInformation("Day 66 RabbitMQ demo: consumer received message: {Message}", received);
+            await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+        };
+        await channel.BasicConsumeAsync(
+            queue: queueName,
+            autoAck: false,
+            consumerTag: string.Empty,
+            noLocal: false,
+            exclusive: false,
+            arguments: null,
+            consumer: consumer);
+
+        var message = $"Hello from FieldOps.Api, {DateTime.UtcNow:O}";
+        var body = System.Text.Encoding.UTF8.GetBytes(message);
+        await channel.BasicPublishAsync(
+            exchange: string.Empty,
+            routingKey: queueName,
+            mandatory: false,
+            basicProperties: new RabbitMQ.Client.BasicProperties(),
+            body: (ReadOnlyMemory<byte>)body);
+        app.Logger.LogInformation("Day 66 RabbitMQ demo: published message to queue '{Queue}'", queueName);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Day 66 RabbitMQ demo skipped: RabbitMQ is not reachable at '{HostName}'", rabbitMqHostName);
+    }
+}
+
 app.Run();
