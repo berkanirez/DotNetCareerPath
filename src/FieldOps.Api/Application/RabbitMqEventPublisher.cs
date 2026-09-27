@@ -28,15 +28,21 @@ public class RabbitMqEventPublisher : IEventPublisher
         await using var connection = await factory.CreateConnectionAsync(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
-        var queueName = EventQueueNaming.QueueNameFor<TEvent>();
-        await channel.QueueDeclareAsync(
-            queue: queueName, durable: false, exclusive: false, autoDelete: false, cancellationToken: cancellationToken);
+        // Day 69: publish to a real, named fanout exchange instead of
+        // Day 67/68's default exchange + single shared queue. A fanout
+        // exchange delivers a copy of this message to EVERY queue bound to
+        // it — this is what actually lets more than one independent
+        // consumer (today: notifications AND audit) receive the same
+        // event, which a single shared queue never could.
+        var exchangeName = EventQueueNaming.ExchangeNameFor<TEvent>();
+        await channel.ExchangeDeclareAsync(
+            exchange: exchangeName, type: ExchangeType.Fanout, durable: false, autoDelete: false, cancellationToken: cancellationToken);
 
         var json = JsonSerializer.Serialize(domainEvent);
         var body = Encoding.UTF8.GetBytes(json);
         await channel.BasicPublishAsync(
-            exchange: string.Empty,
-            routingKey: queueName,
+            exchange: exchangeName,
+            routingKey: string.Empty, // a fanout exchange ignores the routing key entirely
             mandatory: false,
             basicProperties: new BasicProperties(),
             body: (ReadOnlyMemory<byte>)body,

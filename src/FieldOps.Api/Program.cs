@@ -109,6 +109,13 @@ builder.Services.AddSingleton<IEventPublisher>(_ => new RabbitMqEventPublisher(r
 // of whatever HTTP request originally published one.
 builder.Services.AddHostedService<WorkOrderCompletedEventConsumer>();
 
+// Day 69: a second, entirely independent consumer of the SAME event —
+// possible now only because Day 69 moved publishing onto a real fanout
+// exchange (each consumer gets its own queue bound to it) instead of Day
+// 67/68's single shared queue, which could never have supported two
+// independent consumers without them competing for the same messages.
+builder.Services.AddHostedService<WorkOrderCompletedAuditConsumer>();
+
 // Day 53: per-organization rate limiting — resource/performance isolation,
 // the natural counterpart to Week 8's data isolation (a tenant can't see
 // another tenant's data; now, a tenant can't degrade another tenant's

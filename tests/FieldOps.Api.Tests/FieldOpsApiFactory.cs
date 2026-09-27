@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Testcontainers.MsSql;
 
 namespace FieldOps.Api.Tests;
@@ -96,6 +97,32 @@ public class FieldOpsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.ConfigureServices(services =>
         {
             services.AddSingleton<IEventPublisher, NoOpEventPublisher>();
+
+            // Day 69: a second, real, live-caught test-suite regression — far
+            // worse than Day 67's. WorkOrderCompletedEventConsumer/
+            // WorkOrderCompletedAuditConsumer (BackgroundServices, Day 68/69)
+            // each hold a genuine, blocking RabbitMQ connection attempt in
+            // their own ExecuteAsync. Overriding IEventPublisher above does
+            // nothing for these — they don't go through it at all. Two full
+            // test-suite runs, otherwise identical, took ~18 minutes and
+            // ~59 minutes respectively (not proportional to consumer count,
+            // just wildly unpredictable) once nothing was listening on
+            // RabbitMQ's port in this environment. Unlike IEventPublisher,
+            // these are registered as IHostedService, not a normal
+            // single-instance service — a later AddSingleton doesn't
+            // "override" one of these, ALL registered IHostedServices are
+            // started. So instead, their specific registrations are removed
+            // outright for the test host: these two consumers' own
+            // connectivity was already proven live, separately (Day 66-69).
+            var hostedServicesToRemove = services
+                .Where(descriptor => descriptor.ServiceType == typeof(IHostedService)
+                    && (descriptor.ImplementationType == typeof(WorkOrderCompletedEventConsumer)
+                        || descriptor.ImplementationType == typeof(WorkOrderCompletedAuditConsumer)))
+                .ToList();
+            foreach (var descriptor in hostedServicesToRemove)
+            {
+                services.Remove(descriptor);
+            }
         });
     }
 
