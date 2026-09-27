@@ -2550,3 +2550,63 @@ Berkan separately asked how many days remain before Week 12/Phase 3 ends and Pha
 **Understanding questions and independent task:** Declined in favor of moving straight to Day 72 planning ("tamamdır anladım diğer güne geçelim direkt"); all three questions and the independent task answered by Claude directly, recorded honestly. Q1: why `Status` and the outbox row must share one `SaveChanges()` — a crash between two separate calls could commit the status change with no outbox row ever written, permanently losing the event with no trace. Q2: why the first outbox message was marked published yet reached no consumer — `OutboxPublisher` only observes whether the publish itself succeeded, not whether any queue was bound to receive it. Q3: how `OutboxMessage`'s lack of any `WorkOrderCompletedEvent`-specific field relates to ADR 0002 — that ADR already forbids a module referencing another module's or the host's concrete types across its boundary. Independent task (what breaks if the `catch` block always marked a message published): answered correctly — a message that never actually reached RabbitMQ would be marked published anyway and never retried, permanently and silently lost.
 
 **Next session:** Phase 4, Week 14, Day 72 — the Outbox pattern is done and live-verified. Remaining Week 14 topics: inbox pattern, idempotent consumers, retry, exponential backoff, dead-letter queues, duplicate-message handling, eventual consistency. Likely next task: give `EventConsumerBase<TEvent>` real reconnect/retry logic with backoff, directly closing the gap today's demo just re-confirmed live. Exact scope to be finalized at the start of the session.
+
+### 2026-09-27 (continued) — Phase 4, Week 14, Day 72
+
+**Note:** this entry was written retroactively, alongside Day 73's — the end-of-session doc-update step was genuinely skipped in the live session (moved straight to planning Day 73 instead of updating `CURRENT_STATE.md`/`LEARNING_LOG.md` first), caught and corrected once Day 73 also reached its own close-out.
+
+**Topic:** Retry with exponential backoff — directly closing the exact gap Day 71's own live demo had just re-confirmed (a consumer that gives up permanently before RabbitMQ is ready never recovers on its own, even after RabbitMQ comes back).
+
+**Problem solved:** `EventConsumerBase<TEvent>` (Day 69) had a single, one-shot `try`/`catch` around its entire connect-declare-bind-consume sequence — any failure simply ended `ExecuteAsync`, and a `BackgroundService` whose `ExecuteAsync` returns never runs again until the app restarts.
+
+**What I implemented:**
+* The whole connect/consume sequence moved inside an outer `while (!stoppingToken.IsCancellationRequested)` loop. Any failure — the very first connection attempt, or a connection lost later — logs a warning and waits an increasing delay (1s→2s→4s→8s→...→30s cap, doubling each time) before looping back to retry, instead of letting the method end.
+* The delay resets to 1 second the moment a connection genuinely succeeds, so a *future* disconnect gets the same fast first retry a fresh startup would, not whatever long delay a previous failure streak had grown to.
+* A second, inner `catch (OperationCanceledException) { break; }` specifically around the backoff `Task.Delay` itself — without it, a shutdown occurring exactly during that wait would throw from inside an already-executing `catch` handler, unhandled.
+* `docs/daily-code-notes/day-72.md` created (Turkish, inline per-line comments).
+
+**Runtime flow:** connect → success: consume until disconnected or app stops; failure: log, wait (growing delay), retry from the top — forever, until the host itself shuts down.
+
+**Verification:**
+* Live demonstration via Docker Compose: RabbitMQ stopped before the API even started; logs showed exactly the predicted backoff progression (1s, 2s, 4s, 8s, 16s) from both consumers, confirming the doubling-with-cap logic live, not just in code review.
+* RabbitMQ restarted **without touching the API container at all** — both consumers self-healed within seconds on their own; a freshly-completed work order was then correctly received by both, with zero manual intervention beyond restarting RabbitMQ itself.
+* `dotnet test FieldOps.slnx` → 65/65 (~8-9 minutes, the same known Day-69-diagnosed environment slowness — unaffected by this change since test hosts never register the real consumers at all, per Day 69's `FieldOpsApiFactory` fix).
+
+**Evidence:** The exact failure mode Day 71 exposed live (a message published successfully but received by nobody, because both consumers had already given up) is now genuinely closed — proven by reproducing the identical outage scenario and watching both consumers recover entirely on their own.
+
+**Mistakes or difficulties:** None in the implementation. The end-of-session doc-update step itself was the mistake this session — see the note at the top of this entry.
+
+**Production considerations:** Retries continue forever with no escalation (e.g., no alerting once a consumer has been down for an extended period). The 30-second cap and 1-second initial delay are hardcoded, not configurable.
+
+**Understanding questions and independent task:** Berkan answered Q2 correctly in substance but reversed in direction ("sonsuza kadar istek atardık" — endless requests) — corrected to the actual failure mode: without a cap, the *wait* between attempts grows unboundedly large, so requests become far less frequent, not more; a long-recovered RabbitMQ could then sit unnoticed for hours. Q1 and Q3, and the independent task, were unknown ("bilmiyorum"), answered by Claude directly: Q1, why the backoff reset lives in the `try` block (reachable only after genuine success) rather than `catch` (would reset on every failure, defeating backoff entirely); Q3, why two separate `catch (OperationCanceledException) { break; }` blocks exist — one for cancellation during the connected/connecting phase, one specifically for cancellation during the backoff wait itself, since without the second one that exception would escape an already-executing `catch` handler unhandled; independent task, why `while (!stoppingToken.IsCancellationRequested)` still matters even though the `break` statements are the primary exit mechanism — it avoids one extra, doomed connection attempt if cancellation was requested exactly as the loop was about to restart.
+
+**Next session:** Phase 4, Week 14, Day 73 — retry/backoff now genuinely heals both consumers without any manual intervention. Remaining Week 14 topics: inbox pattern, idempotent consumers, dead-letter queues, duplicate-message handling, eventual consistency. Likely next task: give consumers idempotent processing via an Inbox pattern, since RabbitMQ's "at-least-once" guarantee means a message could in principle be redelivered. Exact scope to be finalized at the start of the session.
+
+### 2026-09-27 (continued) — Phase 4, Week 14, Day 73
+
+**Topic:** The Inbox pattern — making both consumers idempotent against RabbitMQ's "at-least-once" (never "exactly-once") delivery guarantee.
+
+**Problem solved:** Nothing today prevented the same message from being processed twice if RabbitMQ ever redelivered it (e.g., a crash between successful processing and acknowledgment) — a duplicate notification or a duplicate audit entry, a real production concern even though narrow.
+
+**What I implemented:**
+* `IEventPublisher.PublishAsync` gained a `messageId` parameter — the outbox row's own already-unique `Id`, reused rather than minting a new Guid — set as RabbitMQ's own `BasicProperties.MessageId` by `RabbitMqEventPublisher`.
+* `ProcessedMessage` (new, in `FieldOps.Modules.WorkOrders`) records `(ConsumerName, MessageId)` pairs with a genuine database-level unique index. `ConsumerName` is part of the key deliberately: "notifications" and "audit" are independent consumers, each needing its own record of what *it* has handled — one consumer's processing must never cause the other to wrongly skip its own first delivery.
+* `EfWorkOrderDirectory` gained `HasProcessedMessage`/`MarkMessageProcessed`, the latter using Day 19's exact two-layer defense (a proactive check first, a `DbUpdateException` catch as a safety net for the rare concurrent-duplicate race — deliberately empty, since a constraint violation there means the guarantee already succeeded via a concurrent call).
+* A new `IInboxStore` abstraction (today backed by `WorkOrderInboxStore`, a thin adapter over `IWorkOrderDirectory`) keeps `EventConsumerBase<TEvent>` itself generic and reusable — it never learns that its only current backing store happens to live in the `WorkOrders` module. `ReceivedAsync` now checks the inbox (via a fresh `IServiceScopeFactory`-created scope) before calling `HandleAsync`, and marks a message processed only after `HandleAsync` genuinely succeeds.
+* `docs/daily-code-notes/day-73.md` created (Turkish, inline per-line comments).
+
+**Runtime flow:** message arrives → read `MessageId` → already in the inbox? skip and log; otherwise → deserialize, `HandleAsync`, then record it in the inbox.
+
+**Verification:**
+* Live demonstration: a work order completed normally (both consumers processed it once, each recording its own `ProcessedMessage` row). The outbox row was then reset to unpublished via a direct SQL `UPDATE` (simulating a redelivery without needing to force an actual RabbitMQ connection failure) — `OutboxPublisher`'s next tick republished the identical message (same `MessageId`), and both consumers correctly logged "skipping already-processed" instead of reprocessing. The real notification/audit log lines were confirmed (by counting them directly in the logs) to still number exactly one each, not two.
+* `dotnet test FieldOps.slnx` → 65/65 (~8.5 minutes, the same known environment slowness — separately reconfirmed and re-explained to Berkan today, distinguishing it clearly from a code regression).
+
+**Evidence:** A genuine duplicate delivery (simulated realistically, not merely asserted) was correctly recognized and skipped by both independent consumers, with the real side effects (notification, audit log) proven to have fired only once.
+
+**Mistakes or difficulties:** A real, live-caught local-environment gap (not a code bug): Berkan noticed `OutboxMessages` didn't appear in his own SSMS view of `localhost\SQLEXPRESS` — explained honestly that today's (and Day 71's) migrations had only ever been applied to the disposable Testcontainers database and the Docker Compose container, never to his own local dev database; resolved by running `dotnet ef database update` from `src/FieldOps.Modules.WorkOrders` directly against the local instance.
+
+**Production considerations:** `ProcessedMessages` grows without bound — no retention/cleanup policy exists yet. Dead-letter handling for a message that fails *permanently* (not from a transient outage) still doesn't exist — Week 14's one remaining roadmap item.
+
+**Understanding questions and independent task:** Q1 and Q2 answered correctly by Berkan (Q2 was essentially Claude's own prior explanation, verified genuinely understood and repeated back accurately). Q3 and the independent task were unknown ("bilmiyorum"), answered by Claude directly: Q3, why `catch (DbUpdateException)` is deliberately empty — a unique-constraint violation there means the idempotency guarantee already succeeded via a concurrent call, so there's genuinely nothing to handle, only something to not treat as an error; independent task, why the unique index alone (without the proactive `HasProcessedMessage` check) would be insufficient — it would only prevent a duplicate database row, not a duplicate real-world side effect, since `HandleAsync` (e.g. sending the actual notification) would already have run by the time an insert failure was ever detected; the proactive check is what actually prevents the duplicate action, the index is only a safety net for the inbox table's own consistency.
+
+**Next session:** Phase 4, Week 14, Day 74 — outbox, retry/backoff, and the inbox pattern are all done and live-verified. The one remaining Week 14 roadmap item is dead-letter queues: today, a message that fails *permanently* (not from a transient RabbitMQ outage) is silently dropped after one failed attempt, with no record and no way to inspect it later. Likely next task: bounded retries per message plus a real dead-letter queue for ones that exhaust them, closing out Week 14. Exact scope to be finalized at the start of the session.

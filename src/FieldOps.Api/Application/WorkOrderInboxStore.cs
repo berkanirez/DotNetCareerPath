@@ -21,4 +21,7 @@ public class WorkOrderInboxStore : IInboxStore
 
     public void MarkProcessed(string consumerName, string messageId) =>
         _workOrderDirectory.MarkMessageProcessed(consumerName, messageId);
+
+    public int RecordFailedAttempt(string consumerName, string messageId) =>
+        _workOrderDirectory.RecordFailedAttempt(consumerName, messageId);
 }

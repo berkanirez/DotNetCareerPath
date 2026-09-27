@@ -8,4 +8,8 @@ public interface IInboxStore
 {
     bool HasProcessed(string consumerName, string messageId);
     void MarkProcessed(string consumerName, string messageId);
+
+    // Day 74: records one more failed attempt and returns the new total —
+    // the caller decides what "too many" means, this just counts.
+    int RecordFailedAttempt(string consumerName, string messageId);
 }

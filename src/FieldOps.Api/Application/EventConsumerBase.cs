@@ -39,6 +39,12 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
 
+    // Day 74: a message that keeps failing THIS many times (not from a
+    // RabbitMQ outage — that's the retry loop above — but from HandleAsync
+    // itself repeatedly throwing) is moved to a dead-letter queue instead
+    // of being requeued forever.
+    private const int MaxDeliveryAttempts = 3;
+
     // Day 72: live-caught, real consequence of Day 68/69's "no reconnect
     // logic" gap — Day 71's live demo showed OutboxPublisher successfully
     // publish an event that no consumer ever received, because both
@@ -79,15 +85,15 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
                 var consumer = new AsyncEventingBasicConsumer(channel);
                 consumer.ReceivedAsync += async (_, ea) =>
                 {
+                    // Day 73: the Inbox pattern's read side — RabbitMQ's
+                    // "at-least-once" guarantee means this exact message
+                    // could, in principle, be delivered again (e.g. if a
+                    // previous delivery's ack never made it back before
+                    // a crash). MessageId was set by RabbitMqEventPublisher
+                    // to the outbox row's own stable Id.
+                    var messageId = ea.BasicProperties.MessageId;
                     try
                     {
-                        // Day 73: the Inbox pattern's read side — RabbitMQ's
-                        // "at-least-once" guarantee means this exact message
-                        // could, in principle, be delivered again (e.g. if a
-                        // previous delivery's ack never made it back before
-                        // a crash). MessageId was set by RabbitMqEventPublisher
-                        // to the outbox row's own stable Id.
-                        var messageId = ea.BasicProperties.MessageId;
                         using var scope = _scopeFactory.CreateScope();
                         var inboxStore = scope.ServiceProvider.GetRequiredService<IInboxStore>();
 
@@ -115,14 +121,26 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
                                 inboxStore.MarkProcessed(_consumerName, messageId);
                             }
                         }
+
+                        await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
                     }
                     catch (Exception ex)
                     {
                         Logger.LogWarning(ex, "{ConsumerName} failed to process a {EventType} message", _consumerName, typeof(TEvent).Name);
-                    }
-                    finally
-                    {
-                        await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+
+                        // Day 74: a genuinely broken/unprocessable message
+                        // must not be retried forever — bound it, then
+                        // dead-letter it. This whole block is deliberately
+                        // its own try/catch: whatever happens here must
+                        // never escape ReceivedAsync unhandled.
+                        try
+                        {
+                            await HandleDeliveryFailureAsync(channel, ea, messageId, stoppingToken);
+                        }
+                        catch (Exception handlingEx)
+                        {
+                            Logger.LogWarning(handlingEx, "{ConsumerName} failed to handle its own delivery failure for a {EventType} message", _consumerName, typeof(TEvent).Name);
+                        }
                     }
                 };
 
@@ -183,6 +201,53 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
                     await connection.DisposeAsync();
                 }
             }
+        }
+    }
+
+    // Day 74: decides, for a message whose processing just failed, whether
+    // to give it another chance (NACK + requeue — RabbitMQ redelivers it
+    // immediately) or to give up on it (publish a copy to a dedicated
+    // dead-letter queue, then ACK the original so it stops circulating in
+    // the normal queue). A message with no MessageId at all can't have its
+    // attempts tracked, so it fails open (acked, not dead-lettered) rather
+    // than being retried forever with no way to ever count it as exhausted.
+    private async Task HandleDeliveryFailureAsync(IChannel channel, BasicDeliverEventArgs ea, string? messageId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(messageId))
+        {
+            await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+            return;
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var inboxStore = scope.ServiceProvider.GetRequiredService<IInboxStore>();
+        var attemptCount = inboxStore.RecordFailedAttempt(_consumerName, messageId);
+
+        if (attemptCount < MaxDeliveryAttempts)
+        {
+            Logger.LogWarning(
+                "{ConsumerName} will retry {EventType} message {MessageId} (attempt {AttemptCount} of {MaxDeliveryAttempts})",
+                _consumerName, typeof(TEvent).Name, messageId, attemptCount, MaxDeliveryAttempts);
+            await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true);
+        }
+        else
+        {
+            Logger.LogWarning(
+                "{ConsumerName} exhausted {MaxDeliveryAttempts} attempts for {EventType} message {MessageId}; moving it to the dead-letter queue",
+                _consumerName, MaxDeliveryAttempts, typeof(TEvent).Name, messageId);
+
+            var deadLetterQueueName = EventQueueNaming.DeadLetterQueueNameFor<TEvent>(_consumerName);
+            await channel.QueueDeclareAsync(
+                queue: deadLetterQueueName, durable: false, exclusive: false, autoDelete: false, cancellationToken: cancellationToken);
+            await channel.BasicPublishAsync(
+                exchange: string.Empty,
+                routingKey: deadLetterQueueName,
+                mandatory: false,
+                basicProperties: new BasicProperties { MessageId = messageId },
+                body: ea.Body,
+                cancellationToken: cancellationToken);
+
+            await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
         }
     }
 }

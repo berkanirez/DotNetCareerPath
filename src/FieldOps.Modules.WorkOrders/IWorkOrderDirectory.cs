@@ -98,4 +98,10 @@ public interface IWorkOrderDirectory
     // "record that it now has," never what either string actually means.
     bool HasProcessedMessage(string consumerName, string messageId);
     void MarkMessageProcessed(string consumerName, string messageId);
+
+    // Day 74: dead-letter queue support — records one more failed attempt
+    // for this (consumer, message) pair and returns the new total count, so
+    // the host can decide "retry again" versus "give up, dead-letter it"
+    // without needing to know how or where that count is stored.
+    int RecordFailedAttempt(string consumerName, string messageId);
 }

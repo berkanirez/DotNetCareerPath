@@ -24,6 +24,10 @@ internal class WorkOrdersDbContext : DbContext
     // OutboxMessages above.
     public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
 
+    // Day 74: dead-letter queue's supporting table — how many times each
+    // (consumer, message) pair has failed so far.
+    public DbSet<FailedMessageAttempt> FailedMessageAttempts => Set<FailedMessageAttempt>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<WorkOrder>(entity =>
@@ -55,6 +59,13 @@ internal class WorkOrdersDbContext : DbContext
             // a second row for the same (consumer, message) pair, so even
             // two near-simultaneous redeliveries can't both slip past a
             // read-then-write race in application code.
+            entity.HasIndex(m => new { m.ConsumerName, m.MessageId }).IsUnique();
+        });
+
+        modelBuilder.Entity<FailedMessageAttempt>(entity =>
+        {
+            entity.Property(m => m.ConsumerName).IsRequired().HasMaxLength(200);
+            entity.Property(m => m.MessageId).IsRequired().HasMaxLength(200);
             entity.HasIndex(m => new { m.ConsumerName, m.MessageId }).IsUnique();
         });
     }

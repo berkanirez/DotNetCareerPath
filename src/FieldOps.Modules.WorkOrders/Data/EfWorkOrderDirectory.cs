@@ -191,6 +191,22 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
         }
     }
 
+    public int RecordFailedAttempt(string consumerName, string messageId)
+    {
+        var attempt = _dbContext.FailedMessageAttempts
+            .FirstOrDefault(m => m.ConsumerName == consumerName && m.MessageId == messageId);
+
+        if (attempt is null)
+        {
+            attempt = new FailedMessageAttempt(consumerName, messageId);
+            _dbContext.FailedMessageAttempts.Add(attempt);
+        }
+
+        attempt.AttemptCount++;
+        _dbContext.SaveChanges();
+        return attempt.AttemptCount;
+    }
+
     private static WorkOrderSummary ToSummary(WorkOrder workOrder) =>
         new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId, workOrder.EvidenceNotes.AsReadOnly(), workOrder.CustomerId, workOrder.CustomerApproved);
 }

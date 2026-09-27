@@ -20,4 +20,11 @@ public static class EventQueueNaming
     // "...audit", both bound to the same fanout exchange above.
     public static string QueueNameFor<TEvent>(string consumerName) =>
         $"{ExchangeNameFor<TEvent>()}.{consumerName}";
+
+    // Day 74: a plain, separate queue (not bound to the fanout exchange at
+    // all) — a message only ever gets here via a direct BasicPublishAsync
+    // to this exact queue name once a consumer has genuinely exhausted its
+    // retries, never through the normal publish/fan-out path.
+    public static string DeadLetterQueueNameFor<TEvent>(string consumerName) =>
+        $"{QueueNameFor<TEvent>(consumerName)}.dead-letter";
 }
