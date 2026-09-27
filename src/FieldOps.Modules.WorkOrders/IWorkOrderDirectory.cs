@@ -91,4 +91,11 @@ public interface IWorkOrderDirectory
     // call (not part of Complete) since publishing happens later, in a
     // different scope/transaction, once IEventPublisher actually succeeds.
     void MarkOutboxMessagePublished(int outboxMessageId);
+
+    // Day 73: the Inbox pattern — consumerName/messageId are as opaque to
+    // this module as outboxEventType/outboxPayload already are; it's just
+    // asked "has THIS consumer already handled THIS message ID" and told
+    // "record that it now has," never what either string actually means.
+    bool HasProcessedMessage(string consumerName, string messageId);
+    void MarkMessageProcessed(string consumerName, string messageId);
 }

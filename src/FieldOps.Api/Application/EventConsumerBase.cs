@@ -16,12 +16,19 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
 {
     private readonly string _hostName;
     private readonly string _consumerName;
+    private readonly IServiceScopeFactory _scopeFactory;
     protected readonly ILogger Logger;
 
-    protected EventConsumerBase(string hostName, string consumerName, ILogger logger)
+    // Day 73: IServiceScopeFactory (not IInboxStore directly) — same Day 50
+    // reasoning as everywhere else it appears in this codebase:
+    // IInboxStore's only implementation is backed by a Scoped
+    // IWorkOrderDirectory, and this class itself is a Singleton
+    // (BackgroundService), so a fresh scope has to be created per message.
+    protected EventConsumerBase(string hostName, string consumerName, IServiceScopeFactory scopeFactory, ILogger logger)
     {
         _hostName = hostName;
         _consumerName = consumerName;
+        _scopeFactory = scopeFactory;
         Logger = logger;
     }
 
@@ -74,11 +81,39 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
                 {
                     try
                     {
-                        var json = Encoding.UTF8.GetString(ea.Body.ToArray());
-                        var domainEvent = JsonSerializer.Deserialize<TEvent>(json);
-                        if (domainEvent is not null)
+                        // Day 73: the Inbox pattern's read side — RabbitMQ's
+                        // "at-least-once" guarantee means this exact message
+                        // could, in principle, be delivered again (e.g. if a
+                        // previous delivery's ack never made it back before
+                        // a crash). MessageId was set by RabbitMqEventPublisher
+                        // to the outbox row's own stable Id.
+                        var messageId = ea.BasicProperties.MessageId;
+                        using var scope = _scopeFactory.CreateScope();
+                        var inboxStore = scope.ServiceProvider.GetRequiredService<IInboxStore>();
+
+                        if (!string.IsNullOrEmpty(messageId) && inboxStore.HasProcessed(_consumerName, messageId))
                         {
-                            await HandleAsync(domainEvent, stoppingToken);
+                            Logger.LogInformation(
+                                "{ConsumerName} skipping already-processed {EventType} message {MessageId}",
+                                _consumerName, typeof(TEvent).Name, messageId);
+                        }
+                        else
+                        {
+                            var json = Encoding.UTF8.GetString(ea.Body.ToArray());
+                            var domainEvent = JsonSerializer.Deserialize<TEvent>(json);
+                            if (domainEvent is not null)
+                            {
+                                await HandleAsync(domainEvent, stoppingToken);
+                            }
+
+                            // Only recorded AFTER HandleAsync genuinely
+                            // succeeds — the same "mark done only once the
+                            // real work is done" discipline as
+                            // OutboxPublisher's MarkOutboxMessagePublished.
+                            if (!string.IsNullOrEmpty(messageId))
+                            {
+                                inboxStore.MarkProcessed(_consumerName, messageId);
+                            }
                         }
                     }
                     catch (Exception ex)

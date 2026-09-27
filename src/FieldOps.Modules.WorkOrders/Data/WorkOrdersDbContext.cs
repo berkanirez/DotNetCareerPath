@@ -20,6 +20,10 @@ internal class WorkOrdersDbContext : DbContext
     // exact same DbContext instance's change tracker.
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
+    // Day 73: the Inbox pattern's table — the consumer-side mirror of
+    // OutboxMessages above.
+    public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<WorkOrder>(entity =>
@@ -40,6 +44,18 @@ internal class WorkOrdersDbContext : DbContext
         {
             entity.Property(m => m.EventType).IsRequired().HasMaxLength(200);
             entity.Property(m => m.Payload).IsRequired();
+        });
+
+        modelBuilder.Entity<ProcessedMessage>(entity =>
+        {
+            entity.Property(m => m.ConsumerName).IsRequired().HasMaxLength(200);
+            entity.Property(m => m.MessageId).IsRequired().HasMaxLength(200);
+
+            // The actual idempotency guarantee: the database itself refuses
+            // a second row for the same (consumer, message) pair, so even
+            // two near-simultaneous redeliveries can't both slip past a
+            // read-then-write race in application code.
+            entity.HasIndex(m => new { m.ConsumerName, m.MessageId }).IsUnique();
         });
     }
 }

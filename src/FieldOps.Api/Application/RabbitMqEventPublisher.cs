@@ -22,7 +22,7 @@ public class RabbitMqEventPublisher : IEventPublisher
         _hostName = hostName;
     }
 
-    public async Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken)
+    public async Task PublishAsync<TEvent>(TEvent domainEvent, string messageId, CancellationToken cancellationToken)
     {
         var factory = new ConnectionFactory { HostName = _hostName };
         await using var connection = await factory.CreateConnectionAsync(cancellationToken);
@@ -44,7 +44,7 @@ public class RabbitMqEventPublisher : IEventPublisher
             exchange: exchangeName,
             routingKey: string.Empty, // a fanout exchange ignores the routing key entirely
             mandatory: false,
-            basicProperties: new BasicProperties(),
+            basicProperties: new BasicProperties { MessageId = messageId },
             body: (ReadOnlyMemory<byte>)body,
             cancellationToken: cancellationToken);
     }

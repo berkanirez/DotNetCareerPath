@@ -169,6 +169,28 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
         }
     }
 
+    public bool HasProcessedMessage(string consumerName, string messageId)
+    {
+        return _dbContext.ProcessedMessages.Any(m => m.ConsumerName == consumerName && m.MessageId == messageId);
+    }
+
+    public void MarkMessageProcessed(string consumerName, string messageId)
+    {
+        try
+        {
+            _dbContext.ProcessedMessages.Add(new ProcessedMessage(consumerName, messageId));
+            _dbContext.SaveChanges();
+        }
+        catch (DbUpdateException)
+        {
+            // Day 19's exact two-layer pattern: HasProcessedMessage above
+            // already covers the normal case; this catch is only a safety
+            // net for the rare race where the same message is processed
+            // concurrently — the database's own unique index (not this
+            // code) is what actually decides which insert wins.
+        }
+    }
+
     private static WorkOrderSummary ToSummary(WorkOrder workOrder) =>
         new(workOrder.Id, workOrder.Title, workOrder.OrganizationId, workOrder.Status, workOrder.AssignedEmployeeId, workOrder.EvidenceNotes.AsReadOnly(), workOrder.CustomerId, workOrder.CustomerApproved);
 }

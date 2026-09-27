@@ -17,8 +17,9 @@ public class WorkOrderCompletedEventConsumer : EventConsumerBase<WorkOrderComple
     public WorkOrderCompletedEventConsumer(
         IConfiguration configuration,
         INotificationSender notificationSender,
+        IServiceScopeFactory scopeFactory,
         ILogger<WorkOrderCompletedEventConsumer> logger)
-        : base(configuration["RabbitMq:HostName"] ?? "localhost", "notifications", logger)
+        : base(configuration["RabbitMq:HostName"] ?? "localhost", "notifications", scopeFactory, logger)
     {
         _notificationSender = notificationSender;
     }

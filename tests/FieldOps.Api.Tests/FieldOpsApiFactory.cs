@@ -131,7 +131,7 @@ public class FieldOpsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     // connectivity (Day 66/67 already proved that live, separately).
     private class NoOpEventPublisher : IEventPublisher
     {
-        public Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task PublishAsync<TEvent>(TEvent domainEvent, string messageId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     // "new", not "override" — same reason as StockPilot's version (Day 28):

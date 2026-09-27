@@ -7,5 +7,11 @@ namespace FieldOps.Api.Application;
 // domain event doesn't need a second, near-identical interface.
 public interface IEventPublisher
 {
-    Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken);
+    // Day 73: messageId is a stable, unique identifier for THIS specific
+    // message (today: the outbox row's own Id) — carried through to
+    // RabbitMQ so a consumer receiving the same message twice (RabbitMQ's
+    // own "at-least-once," never "exactly-once," delivery guarantee) can
+    // recognize the duplicate via the Inbox pattern instead of blindly
+    // reprocessing it.
+    Task PublishAsync<TEvent>(TEvent domainEvent, string messageId, CancellationToken cancellationToken);
 }

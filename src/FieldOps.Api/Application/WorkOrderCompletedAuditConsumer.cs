@@ -8,8 +8,8 @@ namespace FieldOps.Api.Application;
 // or a search-index updater. Neither consumer knows the other exists.
 public class WorkOrderCompletedAuditConsumer : EventConsumerBase<WorkOrderCompletedEvent>
 {
-    public WorkOrderCompletedAuditConsumer(IConfiguration configuration, ILogger<WorkOrderCompletedAuditConsumer> logger)
-        : base(configuration["RabbitMq:HostName"] ?? "localhost", "audit", logger)
+    public WorkOrderCompletedAuditConsumer(IConfiguration configuration, IServiceScopeFactory scopeFactory, ILogger<WorkOrderCompletedAuditConsumer> logger)
+        : base(configuration["RabbitMq:HostName"] ?? "localhost", "audit", scopeFactory, logger)
     {
     }
 

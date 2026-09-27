@@ -66,7 +66,10 @@ public class OutboxPublisher : BackgroundService
                     var domainEvent = JsonSerializer.Deserialize<WorkOrderCompletedEvent>(message.Payload);
                     if (domainEvent is not null)
                     {
-                        await eventPublisher.PublishAsync(domainEvent, cancellationToken);
+                        // Day 73: the outbox row's own Id is already a stable,
+                        // unique identifier for this exact message — reused
+                        // as-is rather than minting a separate Guid.
+                        await eventPublisher.PublishAsync(domainEvent, message.Id.ToString(), cancellationToken);
                         workOrderDirectory.MarkOutboxMessagePublished(message.Id);
                     }
                 }

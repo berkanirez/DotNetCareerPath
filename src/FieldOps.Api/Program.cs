@@ -116,6 +116,12 @@ builder.Services.AddHostedService<WorkOrderCompletedEventConsumer>();
 // independent consumers without them competing for the same messages.
 builder.Services.AddHostedService<WorkOrderCompletedAuditConsumer>();
 
+// Day 73: the Inbox pattern's storage — Scoped, since its only
+// implementation depends on the Scoped IWorkOrderDirectory. Both consumers
+// above resolve this through a fresh scope per message (Day 50's pattern),
+// never by holding it directly.
+builder.Services.AddScoped<IInboxStore, WorkOrderInboxStore>();
+
 // Day 71: the Outbox pattern's publishing side — WorkOrdersController.Complete
 // no longer calls IEventPublisher directly at all; it only writes an outbox
 // row (atomically, alongside the Status change, inside IWorkOrderDirectory.
