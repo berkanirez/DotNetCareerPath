@@ -84,11 +84,15 @@ Bu sınır bilinçli — bugünün tek amacı, "RabbitMQ dediğimiz şey gerçek
 ```yaml
 rabbitmq:
   image: rabbitmq:3-management
+# "3-management" imajı: hem RabbitMQ sunucusunu hem de web tabanlı yönetim arayüzünü içeriyor
   ports:
     - "5672:5672"
+# 5672: RabbitMQ'nun kendi protokolünün (AMQP) portu — uygulamalar buradan bağlanır
     - "15672:15672"
+# 15672: tarayıcıdan açılabilen yönetim arayüzünün portu
   networks:
     - fieldops
+# sqlserver/redis ile aynı paylaşılan ağ — servis adıyla ("rabbitmq") erişilebilir olacak
 ```
 
 **Neden bu şekilde yazıldı:** Day 59'un `sqlserver`/`redis` servisleriyle **birebir aynı desen**: aynı `fieldops` ağında, servis adıyla (`rabbitmq`) erişilebilir — `localhost` değil, `host.docker.internal` değil, Day 58'in named-instance/discovery sorununun bir benzeri hiç yaşanmıyor. `rabbitmq:3-management` (düz `rabbitmq:3` değil) seçildi çünkü bu imaj, RabbitMQ'nun kendi **web yönetim arayüzünü** (port 15672) de içeriyor — bugünkü kanıtı sadece loglardan değil, görsel olarak da (kuyruk, mesaj sayısı) görebilmek için.
@@ -102,6 +106,7 @@ rabbitmq:
 ```json
 "RabbitMq": {
   "HostName": "localhost"
+// Docker Compose dışında çalışırken RabbitMQ'ya bu adresten (yerel makine) bağlanılacak
 }
 ```
 

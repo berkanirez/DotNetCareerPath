@@ -77,10 +77,10 @@ builder.Services.AddHostedService<WorkOrderReportCacheWarmer>();
 // itself a Singleton), so this can safely be a Singleton too.
 builder.Services.AddSingleton<IdempotencyService>();
 
-// Day 51: notification abstraction — WorkOrdersController only ever depends
-// on INotificationSender, never on this concrete demo implementation. A
-// real provider (email/SMS/push) would later replace this registration
-// alone, with zero controller changes.
+// Day 51: notification abstraction. Day 68: WorkOrdersController no longer
+// depends on this at all — WorkOrderCompletedEventConsumer below is now the
+// only caller, entirely decoupled from the HTTP request that published the
+// event it's reacting to.
 builder.Services.AddSingleton<INotificationSender, LoggingNotificationSender>();
 
 // Day 63: AI provider abstraction — the same shape as Day 51's
@@ -101,6 +101,13 @@ builder.Services.AddSingleton<WorkOrderNoteSummaryService>();
 // connection per publish (see its own comment for why).
 var rabbitMqHostName = builder.Configuration["RabbitMq:HostName"] ?? "localhost";
 builder.Services.AddSingleton<IEventPublisher>(_ => new RabbitMqEventPublisher(rabbitMqHostName));
+
+// Day 68: the consumer side — a BackgroundService (same category as Day
+// 50's WorkOrderReportCacheWarmer) that holds one long-lived RabbitMQ
+// connection for the app's entire lifetime and reacts to
+// WorkOrderCompletedEvent messages as they arrive, entirely independently
+// of whatever HTTP request originally published one.
+builder.Services.AddHostedService<WorkOrderCompletedEventConsumer>();
 
 // Day 53: per-organization rate limiting — resource/performance isolation,
 // the natural counterpart to Week 8's data isolation (a tenant can't see

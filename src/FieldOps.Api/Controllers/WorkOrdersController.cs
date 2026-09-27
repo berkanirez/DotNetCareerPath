@@ -25,7 +25,6 @@ public class WorkOrdersController : ControllerBase
     private readonly ICustomerDirectory _customerDirectory;
     private readonly WorkOrderAssignmentService _workOrderAssignmentService;
     private readonly WorkOrderReportService _workOrderReportService;
-    private readonly INotificationSender _notificationSender;
     private readonly IAuditLogWriter _auditLogWriter;
     private readonly IdempotencyService _idempotencyService;
     private readonly WorkOrderNoteSummaryService _workOrderNoteSummaryService;
@@ -38,7 +37,6 @@ public class WorkOrdersController : ControllerBase
         ICustomerDirectory customerDirectory,
         WorkOrderAssignmentService workOrderAssignmentService,
         WorkOrderReportService workOrderReportService,
-        INotificationSender notificationSender,
         IAuditLogWriter auditLogWriter,
         IdempotencyService idempotencyService,
         WorkOrderNoteSummaryService workOrderNoteSummaryService,
@@ -50,7 +48,6 @@ public class WorkOrdersController : ControllerBase
         _customerDirectory = customerDirectory;
         _workOrderAssignmentService = workOrderAssignmentService;
         _workOrderReportService = workOrderReportService;
-        _notificationSender = notificationSender;
         _auditLogWriter = auditLogWriter;
         _idempotencyService = idempotencyService;
         _workOrderNoteSummaryService = workOrderNoteSummaryService;
@@ -345,7 +342,7 @@ public class WorkOrdersController : ControllerBase
     // minimal exception, not a full controller-wide async conversion (that
     // remains out of scope, same as the still-synchronous *Directory
     // classes since Day 48). Only Complete needs to await anything, because
-    // it's the only action that calls INotificationSender.
+    // it's the only action that publishes an event (Day 67).
     [HttpPost("{id}/complete")]
     public async Task<ActionResult<WorkOrderDto>> Complete(
         int id,
@@ -374,12 +371,12 @@ public class WorkOrdersController : ControllerBase
         _workOrderReportService.InvalidateCache(organizationId!.Value);
         _auditLogWriter.Record(organizationId!.Value, id, "Completed", "Employee", actingEmployeeId!.Value);
 
-        // Day 67: FieldOps's first domain event, published alongside (not
-        // instead of) the notification below — a future consumer (a separate
-        // notification service, a reporting service) can react to this
-        // independently, without FieldOps.Api ever needing to know it exists.
-        // Same fail-open reasoning as the notification call: a failed publish
-        // must never fail the completion itself.
+        // Day 67/68: publishing this event now IS the completion-notification
+        // mechanism — WorkOrderCompletedEventConsumer (Day 68) is the one
+        // that decides to call INotificationSender, entirely independently
+        // of this request. Complete no longer knows notifications exist at
+        // all. Same fail-open reasoning as before: a failed publish must
+        // never fail the completion itself, which has already genuinely happened.
         try
         {
             await _eventPublisher.PublishAsync(
@@ -389,22 +386,6 @@ public class WorkOrdersController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to publish WorkOrderCompletedEvent for work order {WorkOrderId}", id);
-        }
-
-        // A failed notification must never fail the completion itself — the
-        // work order is already, genuinely, Completed at this point.
-        if (updated.CustomerId is not null)
-        {
-            try
-            {
-                await _notificationSender.NotifyAsync(
-                    $"Work order '{updated.Title}' has been completed and is awaiting your approval.",
-                    cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to send completion notification for work order {WorkOrderId}", id);
-            }
         }
 
         return Ok(ToDto(updated));

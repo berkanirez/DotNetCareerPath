@@ -13,6 +13,10 @@ public record WorkOrderCompletedEvent(
     int? CustomerId,
     string Title,
     DateTime CompletedAtUtc);
+// bir record — bu event'i taşıyan verinin tamamı bu 5 alan; her alan pozisyonel olarak
+// tanımlanmış (positional record), yani WorkOrderCompletedEvent(1, 1, 1, "Fix...", DateTime.UtcNow)
+// gibi doğrudan sıralı argümanlarla oluşturulabiliyor. CustomerId'in int? (nullable) olması,
+// bir iş emrinin müşterisi olmayabileceği (Day 47) gerçeğini bire bir yansıtıyor.
 ```
 
 **Neden bu şekilde yazıldı:** Bu, FieldOps'un **ilk domain event'i** — "sistemde gerçekten olmuş bir şey"in kaydı (bir iş emri tamamlandı), bir komut ya da istek değil. Kasıtlı olarak **düz, kendi kendine yeten bir kayıt (record)**: ileride bunu okuyacak herhangi bir tüketici (bildirim servisi, raporlama servisi), FieldOps.Api'ye geri bir çağrı yapmadan, sadece bu veriyle işini yapabilmeli. `CustomerId`'in `int?` olması bilinçli — Day 47'den beri bir iş emrinin müşterisi olmayabiliyor.
@@ -27,6 +31,9 @@ public record WorkOrderCompletedEvent(
 public interface IEventPublisher
 {
     Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken);
+// <TEvent> generic parametresi, bu tek metodu HER domain event tipi için kullanılabilir kılıyor —
+// arayüzün kendisi WorkOrderCompletedEvent'i (ya da RabbitMQ'yu) hiç bilmiyor, sadece
+// "bana bir event ver, ben onu yayınlayayım" diyor.
 }
 ```
 
@@ -86,13 +93,19 @@ public class RabbitMqEventPublisher : IEventPublisher
 ```csharp
 try
 {
+// olası bir yayınlama hatası, zaten gerçekleşmiş olan "Completed" durum değişikliğini
+// asla geri almamalı — bu yüzden bu çağrı try/catch içinde
     await _eventPublisher.PublishAsync(
         new WorkOrderCompletedEvent(updated.Id, updated.OrganizationId, updated.CustomerId, updated.Title, DateTime.UtcNow),
         cancellationToken);
+// güncellenmiş iş emrinin (updated) kendi alanlarından yeni bir WorkOrderCompletedEvent
+// oluşturulup IEventPublisher'a veriliyor; CompletedAtUtc için o anın UTC zamanı kullanılıyor
 }
 catch (Exception ex)
 {
     _logger.LogWarning(ex, "Failed to publish WorkOrderCompletedEvent for work order {WorkOrderId}", id);
+// yayınlama başarısız olursa sadece loglanıyor — Complete action'ı yine de normal
+// (başarılı) yanıtını dönmeye devam edecek
 }
 ```
 
@@ -106,7 +119,12 @@ Day 66'nın "TEMP demonstration block"u (bir kuyruk oluşturup "Hello from Field
 
 ```csharp
 var rabbitMqHostName = builder.Configuration["RabbitMq:HostName"] ?? "localhost";
+// yapılandırmadan RabbitMQ adresi bir kere okunuyor
 builder.Services.AddSingleton<IEventPublisher>(_ => new RabbitMqEventPublisher(rabbitMqHostName));
+// IEventPublisher istendiğinde, DI konteynerine "her zaman aynı RabbitMqEventPublisher örneğini
+// (adresi zaten belli) döndür" deniyor — Day 51/63'teki AddSingleton<Arayüz, Somut>() kayıtlarıyla
+// aynı fikir, burada sadece basit bir tip yerine küçük bir fabrika lambda'sı kullanılıyor çünkü
+// RabbitMqEventPublisher'ın yapıcısı bir string (hostName) bekliyor
 ```
 
 Day 51/63'ün aynı kayıt deseni: arayüz için somut implementasyon, `WorkOrdersController` hiçbir zaman `RabbitMqEventPublisher`'ı adıyla bilmiyor.
@@ -123,11 +141,16 @@ Bu değişiklikten sonra `dotnet test FieldOps.slnx` çalıştırıldığında, 
 builder.ConfigureServices(services =>
 {
     services.AddSingleton<IEventPublisher, NoOpEventPublisher>();
+// Program.cs'in kendi IEventPublisher kaydından SONRA çalıştığı için (test host'una özel bu
+// ConfigureWebHost metodu, uygulamanın normal başlangıcından sonra devreye giriyor), bu kayıt
+// öncekini geçersiz kılıyor — testlerde artık gerçek RabbitMqEventPublisher değil, bu sınıf kullanılacak
 });
 
 private class NoOpEventPublisher : IEventPublisher
 {
     public Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken) => Task.CompletedTask;
+// hiçbir şey yapmadan, RabbitMQ'ya hiç dokunmadan, anında tamamlanmış bir Task dönüyor —
+// bu yüzden testlerde artık hiçbir bağlantı denemesi/zaman aşımı yaşanmıyor
 }
 ```
 

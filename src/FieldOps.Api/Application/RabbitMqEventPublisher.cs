@@ -28,7 +28,7 @@ public class RabbitMqEventPublisher : IEventPublisher
         await using var connection = await factory.CreateConnectionAsync(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
-        var queueName = QueueNameFor<TEvent>();
+        var queueName = EventQueueNaming.QueueNameFor<TEvent>();
         await channel.QueueDeclareAsync(
             queue: queueName, durable: false, exclusive: false, autoDelete: false, cancellationToken: cancellationToken);
 
@@ -42,9 +42,4 @@ public class RabbitMqEventPublisher : IEventPublisher
             body: (ReadOnlyMemory<byte>)body,
             cancellationToken: cancellationToken);
     }
-
-    // Day 68+ (a real exchange/routing-key design) will replace this
-    // one-queue-per-event-type convention with something that lets more
-    // than one independent consumer receive the same event.
-    private static string QueueNameFor<TEvent>() => $"fieldops.{typeof(TEvent).Name}";
 }
