@@ -29,82 +29,124 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
     // about getting an event message to this point is identical for all of them.
     protected abstract Task HandleAsync(TEvent domainEvent, CancellationToken cancellationToken);
 
+    private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
+
+    // Day 72: live-caught, real consequence of Day 68/69's "no reconnect
+    // logic" gap — Day 71's live demo showed OutboxPublisher successfully
+    // publish an event that no consumer ever received, because both
+    // consumers had already given up (permanently) before RabbitMQ was even
+    // ready. The whole connect-declare-bind-consume sequence is now wrapped
+    // in an outer retry loop with exponential backoff: any failure —
+    // whether the very first connection attempt, or a connection lost later
+    // — sends control back to the top of the loop instead of letting
+    // ExecuteAsync return and the consumer go silent for good.
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        IConnection? connection = null;
-        IChannel? channel = null;
-        try
+        var retryDelay = InitialRetryDelay;
+
+        while (!stoppingToken.IsCancellationRequested)
         {
-            var factory = new ConnectionFactory { HostName = _hostName };
-            connection = await factory.CreateConnectionAsync(stoppingToken);
-            channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
-
-            var exchangeName = EventQueueNaming.ExchangeNameFor<TEvent>();
-            await channel.ExchangeDeclareAsync(
-                exchange: exchangeName, type: ExchangeType.Fanout, durable: false, autoDelete: false, cancellationToken: stoppingToken);
-
-            // Each consumer gets its OWN queue (named after itself), bound
-            // to the shared exchange — this is what lets it receive its own
-            // copy of every message, independently of any other consumer's
-            // queue for the same event type.
-            var queueName = EventQueueNaming.QueueNameFor<TEvent>(_consumerName);
-            await channel.QueueDeclareAsync(
-                queue: queueName, durable: false, exclusive: false, autoDelete: false, cancellationToken: stoppingToken);
-            await channel.QueueBindAsync(
-                queue: queueName, exchange: exchangeName, routingKey: string.Empty, cancellationToken: stoppingToken);
-
-            var consumer = new AsyncEventingBasicConsumer(channel);
-            consumer.ReceivedAsync += async (_, ea) =>
+            IConnection? connection = null;
+            IChannel? channel = null;
+            try
             {
+                var factory = new ConnectionFactory { HostName = _hostName };
+                connection = await factory.CreateConnectionAsync(stoppingToken);
+                channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
+
+                var exchangeName = EventQueueNaming.ExchangeNameFor<TEvent>();
+                await channel.ExchangeDeclareAsync(
+                    exchange: exchangeName, type: ExchangeType.Fanout, durable: false, autoDelete: false, cancellationToken: stoppingToken);
+
+                // Each consumer gets its OWN queue (named after itself), bound
+                // to the shared exchange — this is what lets it receive its own
+                // copy of every message, independently of any other consumer's
+                // queue for the same event type.
+                var queueName = EventQueueNaming.QueueNameFor<TEvent>(_consumerName);
+                await channel.QueueDeclareAsync(
+                    queue: queueName, durable: false, exclusive: false, autoDelete: false, cancellationToken: stoppingToken);
+                await channel.QueueBindAsync(
+                    queue: queueName, exchange: exchangeName, routingKey: string.Empty, cancellationToken: stoppingToken);
+
+                var consumer = new AsyncEventingBasicConsumer(channel);
+                consumer.ReceivedAsync += async (_, ea) =>
+                {
+                    try
+                    {
+                        var json = Encoding.UTF8.GetString(ea.Body.ToArray());
+                        var domainEvent = JsonSerializer.Deserialize<TEvent>(json);
+                        if (domainEvent is not null)
+                        {
+                            await HandleAsync(domainEvent, stoppingToken);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning(ex, "{ConsumerName} failed to process a {EventType} message", _consumerName, typeof(TEvent).Name);
+                    }
+                    finally
+                    {
+                        await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
+                    }
+                };
+
+                await channel.BasicConsumeAsync(
+                    queue: queueName,
+                    autoAck: false,
+                    consumerTag: string.Empty,
+                    noLocal: false,
+                    exclusive: false,
+                    arguments: null,
+                    consumer: consumer,
+                    cancellationToken: stoppingToken);
+
+                // Connected and consuming — a future disconnect deserves the
+                // same quick first retry as a brand-new startup would, not
+                // whatever long delay a previous failure streak had grown to.
+                retryDelay = InitialRetryDelay;
+
+                await Task.Delay(Timeout.Infinite, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal shutdown — the host is stopping.
+                break;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(
+                    ex,
+                    "{ConsumerName} could not connect to (or lost its connection to) RabbitMQ; retrying in {RetryDelaySeconds}s",
+                    _consumerName, retryDelay.TotalSeconds);
+
                 try
                 {
-                    var json = Encoding.UTF8.GetString(ea.Body.ToArray());
-                    var domainEvent = JsonSerializer.Deserialize<TEvent>(json);
-                    if (domainEvent is not null)
-                    {
-                        await HandleAsync(domainEvent, stoppingToken);
-                    }
+                    await Task.Delay(retryDelay, stoppingToken);
                 }
-                catch (Exception ex)
+                catch (OperationCanceledException)
                 {
-                    Logger.LogWarning(ex, "{ConsumerName} failed to process a {EventType} message", _consumerName, typeof(TEvent).Name);
+                    break;
                 }
-                finally
-                {
-                    await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
-                }
-            };
 
-            await channel.BasicConsumeAsync(
-                queue: queueName,
-                autoAck: false,
-                consumerTag: string.Empty,
-                noLocal: false,
-                exclusive: false,
-                arguments: null,
-                consumer: consumer,
-                cancellationToken: stoppingToken);
-
-            await Task.Delay(Timeout.Infinite, stoppingToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Normal shutdown — the host is stopping.
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "{ConsumerName} could not connect to RabbitMQ; it will not receive {EventType} messages until the app restarts.", _consumerName, typeof(TEvent).Name);
-        }
-        finally
-        {
-            if (channel is not null)
-            {
-                await channel.DisposeAsync();
+                // Exponential backoff, capped — doubling the wait after each
+                // consecutive failure instead of hammering RabbitMQ with an
+                // immediate retry every time, but never waiting forever
+                // between attempts either.
+                var doubledSeconds = retryDelay.TotalSeconds * 2;
+                retryDelay = TimeSpan.FromSeconds(Math.Min(doubledSeconds, MaxRetryDelay.TotalSeconds));
             }
-
-            if (connection is not null)
+            finally
             {
-                await connection.DisposeAsync();
+                if (channel is not null)
+                {
+                    await channel.DisposeAsync();
+                }
+
+                if (connection is not null)
+                {
+                    await connection.DisposeAsync();
+                }
             }
         }
     }
