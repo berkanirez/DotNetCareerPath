@@ -12,6 +12,14 @@ internal class WorkOrdersDbContext : DbContext
 
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
 
+    // Day 71: the Outbox pattern's table, in the same database/DbContext as
+    // WorkOrder itself — this is what makes a status change and its outbox
+    // row commit atomically in one SaveChanges/transaction. A separate
+    // database (even one for "all outbox messages") would defeat the whole
+    // point: the guarantee only exists because both writes go through the
+    // exact same DbContext instance's change tracker.
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<WorkOrder>(entity =>
@@ -26,6 +34,12 @@ internal class WorkOrdersDbContext : DbContext
 
             // No HasData — WorkOrders started empty in-memory (Day 40, no
             // bootstrap problem the way Employees had) and stays empty here.
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.Property(m => m.EventType).IsRequired().HasMaxLength(200);
+            entity.Property(m => m.Payload).IsRequired();
         });
     }
 }

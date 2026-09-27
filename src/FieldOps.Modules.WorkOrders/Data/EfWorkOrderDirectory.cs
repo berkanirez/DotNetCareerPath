@@ -62,7 +62,7 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
         return ToSummary(workOrder);
     }
 
-    public WorkOrderSummary? Complete(int workOrderId)
+    public WorkOrderSummary? Complete(int workOrderId, string outboxEventType, string outboxPayload)
     {
         var workOrder = _dbContext.WorkOrders.FirstOrDefault(w => w.Id == workOrderId);
         if (workOrder is null || workOrder.Status != WorkOrderStatus.InProgress)
@@ -71,6 +71,15 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
         }
 
         workOrder.Status = WorkOrderStatus.Completed;
+
+        // Day 71: the Outbox pattern's whole point — this Add and the
+        // Status change above are tracked by the SAME DbContext and
+        // committed by the SAME SaveChanges call below, so either both
+        // land or neither does. There is no window where the work order is
+        // Completed in the database but no outbox row exists to eventually
+        // get it published.
+        _dbContext.OutboxMessages.Add(new OutboxMessage(outboxEventType, outboxPayload));
+
         _dbContext.SaveChanges();
         return ToSummary(workOrder);
     }
@@ -139,6 +148,25 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
         workOrder.CustomerApproved = true;
         _dbContext.SaveChanges();
         return ToSummary(workOrder);
+    }
+
+    public IReadOnlyList<OutboxMessageSummary> GetUnpublishedOutboxMessages()
+    {
+        return _dbContext.OutboxMessages
+            .Where(m => m.PublishedAtUtc == null)
+            .OrderBy(m => m.CreatedAtUtc)
+            .Select(m => new OutboxMessageSummary(m.Id, m.EventType, m.Payload))
+            .ToList();
+    }
+
+    public void MarkOutboxMessagePublished(int outboxMessageId)
+    {
+        var message = _dbContext.OutboxMessages.FirstOrDefault(m => m.Id == outboxMessageId);
+        if (message is not null)
+        {
+            message.PublishedAtUtc = DateTime.UtcNow;
+            _dbContext.SaveChanges();
+        }
     }
 
     private static WorkOrderSummary ToSummary(WorkOrder workOrder) =>

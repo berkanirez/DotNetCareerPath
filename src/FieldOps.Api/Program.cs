@@ -116,6 +116,14 @@ builder.Services.AddHostedService<WorkOrderCompletedEventConsumer>();
 // independent consumers without them competing for the same messages.
 builder.Services.AddHostedService<WorkOrderCompletedAuditConsumer>();
 
+// Day 71: the Outbox pattern's publishing side — WorkOrdersController.Complete
+// no longer calls IEventPublisher directly at all; it only writes an outbox
+// row (atomically, alongside the Status change, inside IWorkOrderDirectory.
+// Complete). This background service is what actually reads unpublished
+// rows and calls IEventPublisher, tolerating a RabbitMQ outage by simply
+// retrying on its next tick instead of losing the event.
+builder.Services.AddHostedService<OutboxPublisher>();
+
 // Day 53: per-organization rate limiting — resource/performance isolation,
 // the natural counterpart to Week 8's data isolation (a tenant can't see
 // another tenant's data; now, a tenant can't degrade another tenant's

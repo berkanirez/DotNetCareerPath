@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FieldOps.Api.Application;
 using FieldOps.Api.Models;
 using FieldOps.Modules.AuditLogs;
@@ -28,7 +29,6 @@ public class WorkOrdersController : ControllerBase
     private readonly IAuditLogWriter _auditLogWriter;
     private readonly IdempotencyService _idempotencyService;
     private readonly WorkOrderNoteSummaryService _workOrderNoteSummaryService;
-    private readonly IEventPublisher _eventPublisher;
     private readonly ILogger<WorkOrdersController> _logger;
 
     public WorkOrdersController(
@@ -40,7 +40,6 @@ public class WorkOrdersController : ControllerBase
         IAuditLogWriter auditLogWriter,
         IdempotencyService idempotencyService,
         WorkOrderNoteSummaryService workOrderNoteSummaryService,
-        IEventPublisher eventPublisher,
         ILogger<WorkOrdersController> logger)
     {
         _workOrderDirectory = workOrderDirectory;
@@ -51,7 +50,6 @@ public class WorkOrdersController : ControllerBase
         _auditLogWriter = auditLogWriter;
         _idempotencyService = idempotencyService;
         _workOrderNoteSummaryService = workOrderNoteSummaryService;
-        _eventPublisher = eventPublisher;
         _logger = logger;
     }
 
@@ -339,16 +337,17 @@ public class WorkOrdersController : ControllerBase
     }
 
     // Day 51: the only async action in this controller today — a deliberate,
-    // minimal exception, not a full controller-wide async conversion (that
-    // remains out of scope, same as the still-synchronous *Directory
-    // classes since Day 48). Only Complete needs to await anything, because
-    // it's the only action that publishes an event (Day 67).
+    // minimal exception this controller used to make, was undone here: Day 71's
+    // Outbox pattern moved event publishing out of the request entirely — the
+    // event row is written in the SAME SaveChanges call as the Status change
+    // (inside IWorkOrderDirectory.Complete), and OutboxPublisher (a separate
+    // BackgroundService) is what actually calls IEventPublisher, later,
+    // independently of this request. Complete no longer awaits anything.
     [HttpPost("{id}/complete")]
-    public async Task<ActionResult<WorkOrderDto>> Complete(
+    public ActionResult<WorkOrderDto> Complete(
         int id,
         [FromHeader(Name = "X-Organization-Id")] int? organizationId,
-        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId,
-        CancellationToken cancellationToken)
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId)
     {
         var membershipError = ValidateMembership(organizationId, actingEmployeeId);
         if (membershipError is not null)
@@ -356,13 +355,20 @@ public class WorkOrdersController : ControllerBase
             return membershipError;
         }
 
-        var ownershipError = ValidateOwnership(id, organizationId, actingEmployeeId, out _);
+        var ownershipError = ValidateOwnership(id, organizationId, actingEmployeeId, out var workOrderBeforeCompletion);
         if (ownershipError is not null)
         {
             return ownershipError;
         }
 
-        var updated = _workOrderDirectory.Complete(id);
+        // Day 71: built BEFORE Complete() runs, from the work order's
+        // already-known Title/CustomerId (neither changes during Complete) —
+        // this is the exact payload that will end up in the outbox row,
+        // written atomically alongside the Status change itself.
+        var eventPayload = JsonSerializer.Serialize(
+            new WorkOrderCompletedEvent(id, organizationId!.Value, workOrderBeforeCompletion!.CustomerId, workOrderBeforeCompletion.Title, DateTime.UtcNow));
+
+        var updated = _workOrderDirectory.Complete(id, nameof(WorkOrderCompletedEvent), eventPayload);
         if (updated is null)
         {
             return BadRequest($"Work order {id} must be InProgress before it can be completed.");
@@ -370,23 +376,6 @@ public class WorkOrdersController : ControllerBase
 
         _workOrderReportService.InvalidateCache(organizationId!.Value);
         _auditLogWriter.Record(organizationId!.Value, id, "Completed", "Employee", actingEmployeeId!.Value);
-
-        // Day 67/68: publishing this event now IS the completion-notification
-        // mechanism — WorkOrderCompletedEventConsumer (Day 68) is the one
-        // that decides to call INotificationSender, entirely independently
-        // of this request. Complete no longer knows notifications exist at
-        // all. Same fail-open reasoning as before: a failed publish must
-        // never fail the completion itself, which has already genuinely happened.
-        try
-        {
-            await _eventPublisher.PublishAsync(
-                new WorkOrderCompletedEvent(updated.Id, updated.OrganizationId, updated.CustomerId, updated.Title, DateTime.UtcNow),
-                cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to publish WorkOrderCompletedEvent for work order {WorkOrderId}", id);
-        }
 
         return Ok(ToDto(updated));
     }

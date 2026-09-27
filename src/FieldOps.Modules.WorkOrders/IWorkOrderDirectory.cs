@@ -37,7 +37,15 @@ public interface IWorkOrderDirectory
     // requires InProgress. Returns null if the work order doesn't exist or
     // isn't in the required prior state.
     WorkOrderSummary? Start(int workOrderId);
-    WorkOrderSummary? Complete(int workOrderId);
+
+    // Day 71: outboxEventType/outboxPayload are opaque to this module — it
+    // never interprets them, just persists them in the SAME SaveChanges
+    // call as the Status change (the Outbox pattern's actual guarantee).
+    // The host builds these two strings (typically nameof(SomeEvent) and
+    // JsonSerializer.Serialize(someEvent)) since only the host knows what a
+    // "WorkOrderCompletedEvent" even is (ADR 0002 — no FieldOps.Api type
+    // reference exists in this module).
+    WorkOrderSummary? Complete(int workOrderId, string outboxEventType, string outboxPayload);
 
     // Day 43: changes WHO is assigned without changing Status — unlike
     // Assign (Open -> Assigned), Reassign only makes sense while a work
@@ -73,4 +81,14 @@ public interface IWorkOrderDirectory
     // ICustomerDirectory, this module never will). Returns null if the
     // work order doesn't exist or isn't Completed.
     WorkOrderSummary? Approve(int workOrderId);
+
+    // Day 71: read side of the Outbox pattern — OutboxPublisher (a host
+    // BackgroundService) polls this to find rows Complete() wrote but
+    // nothing has published to RabbitMQ yet.
+    IReadOnlyList<OutboxMessageSummary> GetUnpublishedOutboxMessages();
+
+    // Marks one row published so it's never picked up again. A separate
+    // call (not part of Complete) since publishing happens later, in a
+    // different scope/transaction, once IEventPublisher actually succeeds.
+    void MarkOutboxMessagePublished(int outboxMessageId);
 }

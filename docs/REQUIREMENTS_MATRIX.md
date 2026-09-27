@@ -74,7 +74,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Elasticsearch | 2 | Phase 4 | Working endpoint | 0 | Planned |
 | RabbitMQ | 3 | Phase 4 | Working user flow, debugging note | 3 | In Progress |
 | Kafka concepts | 1 | Phase 4 (conceptual only) | English technical explanation | 0 | Planned |
-| Event-driven architecture | 3 | Phase 4 | ADR, working user flow | 0 | Planned |
+| Event-driven architecture | 3 | Phase 4 | ADR, working user flow | 3 | In Progress |
 | Outbox/Inbox | 3 | Phase 4 | Unit test, integration test | 0 | Planned |
 | Modular monolith | 3 | Phase 3 | ADR, commit | 3 | In Progress |
 | Microservices | 2 | Phase 4 | ADR, deployment | 0 | Planned |
