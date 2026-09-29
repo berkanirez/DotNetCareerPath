@@ -8,6 +8,14 @@ namespace FieldOps.Api.Application;
 // be a SOAP service, or what its generated proxy types look like.
 // Everything about NumberConversionSoapTypeClient, its request/response
 // wrapper types, and its FaultException type stays inside this one file.
+//
+// Day 84 / ADR 0009: of every seam interface in this codebase
+// (INotificationSender, IAiProvider, IWorkOrderSearchIndex, this one), this
+// is the clearest real anti-corruption layer, in Eric Evans's DDD sense —
+// SOAP's own model (XML envelopes, generated wrapper types, FaultException
+// as its native error channel) is genuinely, structurally foreign to
+// FieldOps's plain decimal/string/exception world. This class's entire job
+// is making sure that foreign model never reaches one line outside itself.
 public class DataAccessBillingAmountSpeller : IBillingAmountSpeller
 {
     public async Task<string> SpellAmountInWordsAsync(decimal amount, CancellationToken cancellationToken)
