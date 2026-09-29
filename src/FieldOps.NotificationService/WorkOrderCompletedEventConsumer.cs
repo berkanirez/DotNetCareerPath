@@ -1,15 +1,9 @@
-namespace FieldOps.Api.Application;
+namespace FieldOps.NotificationService;
 
-// Day 68: the real payoff of Day 67's WorkOrderCompletedEvent — until this
-// class existed, the event was published to RabbitMQ but nothing ever read
-// it back, so it provided no actual behavior on its own. WorkOrdersController.
-// Complete only publishes the fact that happened; deciding what to do about
-// it now lives entirely here instead.
-//
-// Day 69: rebuilt on top of EventConsumerBase<TEvent> once
-// WorkOrderCompletedAuditConsumer needed the exact same RabbitMQ mechanics
-// — this class now only says WHAT to do with the event ("notifications"
-// is its own queue name/consumer identity), not HOW to connect/consume.
+// Day 76: moved here from FieldOps.Api, per ADR 0005 — this service is now
+// the only place a WorkOrderCompletedEvent turns into an actual
+// notification. FieldOps.Api still publishes the event (via its Outbox
+// pattern); this consumer no longer lives anywhere near that code.
 public class WorkOrderCompletedEventConsumer : EventConsumerBase<WorkOrderCompletedEvent>
 {
     private readonly INotificationSender _notificationSender;

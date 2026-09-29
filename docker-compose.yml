@@ -42,6 +42,21 @@ services:
     networks:
       - fieldops
 
+  # Day 79: single-node, security-disabled Elasticsearch — a demo
+  # simplification (a real cluster would have multiple nodes and real
+  # authentication); "discovery.type=single-node" tells Elasticsearch not
+  # to wait for other nodes that will never exist here.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.1.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    networks:
+      - fieldops
+
   fieldops-api:
     build:
       context: .
@@ -50,6 +65,7 @@ services:
       - sqlserver
       - redis
       - rabbitmq
+      - elasticsearch
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__FieldOpsOrganizationsDb: "Server=sqlserver;Database=FieldOpsOrganizations;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
@@ -59,8 +75,29 @@ services:
       ConnectionStrings__FieldOpsAuditLogsDb: "Server=sqlserver;Database=FieldOpsAuditLogs;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
       Redis__ConnectionString: "redis:6379"
       RabbitMq__HostName: "rabbitmq"
+      Elasticsearch__Uri: "http://elasticsearch:9200"
     ports:
       - "5190:8080"
+    networks:
+      - fieldops
+
+  # Day 76 / ADR 0005: the first real service extraction — a genuinely
+  # separate deployable, with its own database (FieldOpsNotifications, still
+  # on the same shared sqlserver container for this demo, but its own
+  # catalog, never touched by fieldops-api). Its only real link to
+  # fieldops-api is RabbitMq__HostName pointing at the same broker; there is
+  # no shared connection string and no reference to fieldops-api's image.
+  fieldops-notification-service:
+    build:
+      context: .
+      dockerfile: src/FieldOps.NotificationService/Dockerfile
+    depends_on:
+      - sqlserver
+      - rabbitmq
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__FieldOpsNotificationsDb: "Server=sqlserver;Database=FieldOpsNotifications;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;"
+      RabbitMq__HostName: "rabbitmq"
     networks:
       - fieldops
 

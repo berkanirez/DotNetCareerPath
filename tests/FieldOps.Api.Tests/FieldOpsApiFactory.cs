@@ -98,26 +98,31 @@ public class FieldOpsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.AddSingleton<IEventPublisher, NoOpEventPublisher>();
 
+            // Day 79: same reasoning as NoOpEventPublisher above — every test
+            // calling Create/Complete now also calls IWorkOrderSearchIndex,
+            // which would otherwise try a genuine connection to Elasticsearch
+            // (not present in this test environment) on every single call.
+            services.AddSingleton<IWorkOrderSearchIndex, NoOpWorkOrderSearchIndex>();
+
             // Day 69: a second, real, live-caught test-suite regression — far
-            // worse than Day 67's. WorkOrderCompletedEventConsumer/
-            // WorkOrderCompletedAuditConsumer (BackgroundServices, Day 68/69)
-            // each hold a genuine, blocking RabbitMQ connection attempt in
-            // their own ExecuteAsync. Overriding IEventPublisher above does
-            // nothing for these — they don't go through it at all. Two full
-            // test-suite runs, otherwise identical, took ~18 minutes and
-            // ~59 minutes respectively (not proportional to consumer count,
-            // just wildly unpredictable) once nothing was listening on
-            // RabbitMQ's port in this environment. Unlike IEventPublisher,
-            // these are registered as IHostedService, not a normal
-            // single-instance service — a later AddSingleton doesn't
-            // "override" one of these, ALL registered IHostedServices are
-            // started. So instead, their specific registrations are removed
-            // outright for the test host: these two consumers' own
-            // connectivity was already proven live, separately (Day 66-69).
+            // worse than Day 67's. WorkOrderCompletedAuditConsumer
+            // (a BackgroundService, Day 69) holds a genuine, blocking
+            // RabbitMQ connection attempt in its own ExecuteAsync.
+            // Overriding IEventPublisher above does nothing for it — it
+            // doesn't go through it at all. Unlike IEventPublisher, it's
+            // registered as IHostedService, not a normal single-instance
+            // service — a later AddSingleton doesn't "override" one of
+            // these, ALL registered IHostedServices are started. So instead,
+            // its registration is removed outright for the test host: its
+            // own connectivity was already proven live, separately (Day
+            // 69-74). Day 76: the notification-sending consumer this used to
+            // also remove (WorkOrderCompletedEventConsumer) no longer lives
+            // in FieldOps.Api at all — it was extracted into its own
+            // FieldOps.NotificationService project, per ADR 0005, so this
+            // test host never registers it in the first place.
             var hostedServicesToRemove = services
                 .Where(descriptor => descriptor.ServiceType == typeof(IHostedService)
-                    && (descriptor.ImplementationType == typeof(WorkOrderCompletedEventConsumer)
-                        || descriptor.ImplementationType == typeof(WorkOrderCompletedAuditConsumer)))
+                    && descriptor.ImplementationType == typeof(WorkOrderCompletedAuditConsumer))
                 .ToList();
             foreach (var descriptor in hostedServicesToRemove)
             {
@@ -132,6 +137,24 @@ public class FieldOpsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private class NoOpEventPublisher : IEventPublisher
     {
         public Task PublishAsync<TEvent>(TEvent domainEvent, string messageId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    // Deliberately does nothing and never fails — these tests care about
+    // WorkOrdersController's own behavior, not about proving Elasticsearch
+    // connectivity (that gets proven live, separately, same as RabbitMQ).
+    private class NoOpWorkOrderSearchIndex : IWorkOrderSearchIndex
+    {
+        public Task IndexAsync(WorkOrderSearchDocument document, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<WorkOrderSearchDocument>> SearchAsync(int organizationId, string query, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WorkOrderSearchDocument>>(Array.Empty<WorkOrderSearchDocument>());
+
+        // Day 81: also a no-op — Program.cs calls EnsureIndexExistsAsync at
+        // startup, including in this test host, and nothing here should
+        // ever attempt a real Elasticsearch connection.
+        public Task EnsureIndexExistsAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task RebuildOrganizationIndexAsync(int organizationId, IReadOnlyList<WorkOrderSearchDocument> documents, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     // "new", not "override" — same reason as StockPilot's version (Day 28):

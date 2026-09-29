@@ -1,0 +1,55 @@
+{
+  "providerId": "Microsoft.Tools.ServiceModel.Svcutil",
+  "version": "8.0.0",
+  "options": {
+    "inputs": [
+      "https://www.dataaccess.com/webservicesserver/NumberConversion.wso?WSDL"
+    ],
+    "namespaceMappings": [
+      "*, FieldOps.Api.NumberConversionClient"
+    ],
+    "outputFile": "Reference.cs",
+    "references": [
+      "Azure.Core, {Azure.Core, 1.50.0}",
+      "Azure.Identity, {Azure.Identity, 1.17.1}",
+      "C:\\Users\\berka\\Desktop\\DotNetCareerPath\\src\\FieldOps.Api\\bin\\Debug\\net10.0\\FieldOps.Modules.AuditLogs.dll",
+      "C:\\Users\\berka\\Desktop\\DotNetCareerPath\\src\\FieldOps.Api\\bin\\Debug\\net10.0\\FieldOps.Modules.Customers.dll",
+      "C:\\Users\\berka\\Desktop\\DotNetCareerPath\\src\\FieldOps.Api\\bin\\Debug\\net10.0\\FieldOps.Modules.Employees.dll",
+      "C:\\Users\\berka\\Desktop\\DotNetCareerPath\\src\\FieldOps.Api\\bin\\Debug\\net10.0\\FieldOps.Modules.Organizations.dll",
+      "C:\\Users\\berka\\Desktop\\DotNetCareerPath\\src\\FieldOps.Api\\bin\\Debug\\net10.0\\FieldOps.Modules.WorkOrders.dll",
+      "Elastic.Clients.Elasticsearch, {Elastic.Clients.Elasticsearch, 9.5.2}",
+      "Elastic.Esql, {Elastic.Esql, 0.11.0}",
+      "Elastic.Transport, {Elastic.Transport, 0.17.1}",
+      "Microsoft.AspNetCore.OpenApi, {Microsoft.AspNetCore.OpenApi, 10.0.11}",
+      "Microsoft.Bcl.AsyncInterfaces, {Microsoft.Bcl.AsyncInterfaces, 8.0.0}",
+      "Microsoft.Data.SqlClient, {Microsoft.Data.SqlClient, 6.1.6}",
+      "Microsoft.EntityFrameworkCore, {Microsoft.EntityFrameworkCore, 10.0.11}",
+      "Microsoft.EntityFrameworkCore.Abstractions, {Microsoft.EntityFrameworkCore.Abstractions, 10.0.11}",
+      "Microsoft.EntityFrameworkCore.Relational, {Microsoft.EntityFrameworkCore.Relational, 10.0.11}",
+      "Microsoft.EntityFrameworkCore.SqlServer, {Microsoft.EntityFrameworkCore.SqlServer, 10.0.11}",
+      "Microsoft.Identity.Client, {Microsoft.Identity.Client, 4.84.2}",
+      "Microsoft.Identity.Client.Broker, {Microsoft.Identity.Client.Broker, 4.84.2}",
+      "Microsoft.Identity.Client.Extensions.Msal, {Microsoft.Identity.Client.Extensions.Msal, 4.78.0}",
+      "Microsoft.Identity.Client.NativeInterop, {Microsoft.Identity.Client.NativeInterop, 0.20.6}",
+      "Microsoft.IdentityModel.Abstractions, {Microsoft.IdentityModel.Abstractions, 8.14.0}",
+      "Microsoft.IdentityModel.JsonWebTokens, {Microsoft.IdentityModel.JsonWebTokens, 7.7.1}",
+      "Microsoft.IdentityModel.Logging, {Microsoft.IdentityModel.Logging, 7.7.1}",
+      "Microsoft.IdentityModel.Protocols, {Microsoft.IdentityModel.Protocols, 7.7.1}",
+      "Microsoft.IdentityModel.Protocols.OpenIdConnect, {Microsoft.IdentityModel.Protocols.OpenIdConnect, 7.7.1}",
+      "Microsoft.IdentityModel.Tokens, {Microsoft.IdentityModel.Tokens, 7.7.1}",
+      "Microsoft.OpenApi, {Microsoft.OpenApi, 2.7.5}",
+      "Microsoft.SqlServer.Server, {Microsoft.SqlServer.Server, 1.0.0}",
+      "RabbitMQ.Client, {RabbitMQ.Client, 7.2.2}",
+      "RESPite, {RESPite, 3.3.0}",
+      "StackExchange.Redis, {StackExchange.Redis, 3.3.0}",
+      "System.ClientModel, {System.ClientModel, 1.8.0}",
+      "System.IdentityModel.Tokens.Jwt, {System.IdentityModel.Tokens.Jwt, 7.7.1}",
+      "System.IO.Hashing, {System.IO.Hashing, 10.0.12}",
+      "System.Memory.Data, {System.Memory.Data, 8.0.1}",
+      "System.Security.Cryptography.Pkcs, {System.Security.Cryptography.Pkcs, 9.0.11}",
+      "System.Security.Cryptography.ProtectedData, {System.Security.Cryptography.ProtectedData, 9.0.11}"
+    ],
+    "targetFramework": "net10.0",
+    "typeReuseMode": "All"
+  }
+}

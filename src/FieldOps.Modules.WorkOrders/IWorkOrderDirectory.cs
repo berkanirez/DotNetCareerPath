@@ -15,7 +15,16 @@ public interface IWorkOrderDirectory
     // FieldOps.Modules.Customers at all (ADR 0002). The host
     // (WorkOrdersController) checks the customer exists and belongs to the
     // right organization before ever calling this.
-    WorkOrderSummary Create(string title, int organizationId, int? customerId = null);
+    //
+    // Day 80: buildOutboxEntries is a CALLBACK, not a plain list, for a
+    // concrete reason — the new WorkOrder's Id doesn't exist yet when this
+    // method is called (it's database-generated), but the host's outbox
+    // payload (e.g. a search-index request) needs that real Id inside it.
+    // This module calls the callback with the Id only once it's genuinely
+    // known, then persists whatever opaque entries come back — in the SAME
+    // transaction as the WorkOrder's own insert, so a crash between the two
+    // writes leaves neither behind, never just one.
+    WorkOrderSummary Create(string title, int organizationId, int? customerId, Func<int, IReadOnlyList<OutboxEntry>> buildOutboxEntries);
 
     // Deliberately does NOT validate that employeeId refers to a real
     // Employee, or that it belongs to the same organization as this work
@@ -38,14 +47,18 @@ public interface IWorkOrderDirectory
     // isn't in the required prior state.
     WorkOrderSummary? Start(int workOrderId);
 
-    // Day 71: outboxEventType/outboxPayload are opaque to this module — it
-    // never interprets them, just persists them in the SAME SaveChanges
-    // call as the Status change (the Outbox pattern's actual guarantee).
-    // The host builds these two strings (typically nameof(SomeEvent) and
+    // Day 71: outboxEntries are opaque to this module — it never interprets
+    // them, just persists them in the SAME SaveChanges call as the Status
+    // change (the Outbox pattern's actual guarantee). The host builds each
+    // entry's EventType/Payload (typically nameof(SomeEvent) and
     // JsonSerializer.Serialize(someEvent)) since only the host knows what a
     // "WorkOrderCompletedEvent" even is (ADR 0002 — no FieldOps.Api type
     // reference exists in this module).
-    WorkOrderSummary? Complete(int workOrderId, string outboxEventType, string outboxPayload);
+    //
+    // Day 80: a plain list here (not Create's callback above) — Complete
+    // acts on a WorkOrder that already exists, with an already-known Id, so
+    // there's no generated value the host needs to wait for.
+    WorkOrderSummary? Complete(int workOrderId, IReadOnlyList<OutboxEntry> outboxEntries);
 
     // Day 43: changes WHO is assigned without changing Status — unlike
     // Assign (Open -> Assigned), Reassign only makes sense while a work

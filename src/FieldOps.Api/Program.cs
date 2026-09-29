@@ -1,3 +1,4 @@
+using Elastic.Clients.Elasticsearch;
 using FieldOps.Api.Application;
 using FieldOps.Modules.AuditLogs;
 using FieldOps.Modules.Customers;
@@ -77,12 +78,6 @@ builder.Services.AddHostedService<WorkOrderReportCacheWarmer>();
 // itself a Singleton), so this can safely be a Singleton too.
 builder.Services.AddSingleton<IdempotencyService>();
 
-// Day 51: notification abstraction. Day 68: WorkOrdersController no longer
-// depends on this at all — WorkOrderCompletedEventConsumer below is now the
-// only caller, entirely decoupled from the HTTP request that published the
-// event it's reacting to.
-builder.Services.AddSingleton<INotificationSender, LoggingNotificationSender>();
-
 // Day 63: AI provider abstraction — the same shape as Day 51's
 // INotificationSender above. WorkOrderNoteSummaryService only ever depends
 // on IAiProvider; a real provider (OpenAI/Anthropic) would later replace
@@ -102,24 +97,39 @@ builder.Services.AddSingleton<WorkOrderNoteSummaryService>();
 var rabbitMqHostName = builder.Configuration["RabbitMq:HostName"] ?? "localhost";
 builder.Services.AddSingleton<IEventPublisher>(_ => new RabbitMqEventPublisher(rabbitMqHostName));
 
+// Day 79: Elasticsearch — a searchable copy of work orders, alongside (not
+// instead of) SQL Server, which stays the single source of truth. The
+// client is thread-safe and holds pooled connections, so it's a Singleton,
+// the same shape as Day 48's IConnectionMultiplexer.
+var elasticsearchUri = builder.Configuration["Elasticsearch:Uri"] ?? "http://localhost:9200";
+builder.Services.AddSingleton(_ => new ElasticsearchClient(new Uri(elasticsearchUri)));
+builder.Services.AddSingleton<IWorkOrderSearchIndex, ElasticsearchWorkOrderSearchIndex>();
+
+// Day 83: ADR 0008's SOAP integration boundary, made real. Scoped, not
+// Singleton — DataAccessBillingAmountSpeller creates a fresh generated SOAP
+// client per call, so it holds no state worth sharing across requests (the
+// same "no pooled connection yet" simplification RabbitMqEventPublisher
+// made on Day 67).
+builder.Services.AddScoped<IBillingAmountSpeller, DataAccessBillingAmountSpeller>();
+
 // Day 68: the consumer side — a BackgroundService (same category as Day
 // 50's WorkOrderReportCacheWarmer) that holds one long-lived RabbitMQ
 // connection for the app's entire lifetime and reacts to
 // WorkOrderCompletedEvent messages as they arrive, entirely independently
 // of whatever HTTP request originally published one.
-builder.Services.AddHostedService<WorkOrderCompletedEventConsumer>();
-
-// Day 69: a second, entirely independent consumer of the SAME event —
-// possible now only because Day 69 moved publishing onto a real fanout
-// exchange (each consumer gets its own queue bound to it) instead of Day
-// 67/68's single shared queue, which could never have supported two
-// independent consumers without them competing for the same messages.
+//
+// Day 76: the notification-sending consumer (WorkOrderCompletedEventConsumer)
+// was extracted into its own, genuinely separate FieldOps.NotificationService
+// project, per ADR 0005 — it no longer lives here at all. This audit
+// consumer is the one remaining consumer left inside FieldOps.Api; it's
+// still a domain event by ADR 0004's own definition, since it never leaves
+// this deployment.
 builder.Services.AddHostedService<WorkOrderCompletedAuditConsumer>();
 
 // Day 73: the Inbox pattern's storage — Scoped, since its only
-// implementation depends on the Scoped IWorkOrderDirectory. Both consumers
-// above resolve this through a fresh scope per message (Day 50's pattern),
-// never by holding it directly.
+// implementation depends on the Scoped IWorkOrderDirectory. The audit
+// consumer above resolves this through a fresh scope per message (Day 50's
+// pattern), never by holding it directly.
 builder.Services.AddScoped<IInboxStore, WorkOrderInboxStore>();
 
 // Day 71: the Outbox pattern's publishing side — WorkOrdersController.Complete
@@ -187,6 +197,32 @@ builder.Services.AddHealthChecks()
         args: [RequireConnectionString("FieldOpsWorkOrdersDb")]);
 
 var app = builder.Build();
+
+// Day 81: unlike this repo's SQL Server migrations (always applied by hand,
+// on purpose), ensuring the Elasticsearch index/mapping exists is safe to do
+// automatically, every startup — it's fully idempotent (does nothing if the
+// index is already there) and there's no equivalent "migration history" risk
+// to guard against. In test hosts, IWorkOrderSearchIndex is overridden with
+// a no-op (FieldOpsApiFactory), so this call does nothing there either.
+//
+// Wrapped in try/catch deliberately: the whole point of Day 80's work was
+// that Elasticsearch being unreachable must never stop FieldOps.Api itself
+// from working (Create/Complete degrade gracefully via the Outbox pattern).
+// A startup crash here — the app refusing to even START because Elasticsearch
+// happens to be down at that exact moment — would quietly reintroduce the
+// exact hard dependency Day 80 just removed. If this fails, the index is
+// simply left to Elasticsearch's own dynamic mapping (Day 79's fallback)
+// once it does come back.
+try
+{
+    using var startupScope = app.Services.CreateScope();
+    var searchIndex = startupScope.ServiceProvider.GetRequiredService<IWorkOrderSearchIndex>();
+    await searchIndex.EnsureIndexExistsAsync(CancellationToken.None);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not ensure the Elasticsearch search index exists at startup; it will fall back to dynamic mapping once reachable");
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

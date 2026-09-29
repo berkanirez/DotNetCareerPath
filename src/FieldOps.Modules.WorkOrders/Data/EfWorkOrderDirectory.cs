@@ -27,11 +27,28 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
         return workOrder is null ? null : ToSummary(workOrder);
     }
 
-    public WorkOrderSummary Create(string title, int organizationId, int? customerId = null)
+    public WorkOrderSummary Create(string title, int organizationId, int? customerId, Func<int, IReadOnlyList<OutboxEntry>> buildOutboxEntries)
     {
+        // Day 80: an explicit transaction because this Create, unlike
+        // Complete, genuinely needs TWO SaveChanges calls — the WorkOrder's
+        // Id doesn't exist until the first one runs, but the outbox entries
+        // built from it must land in the SAME atomic unit as the WorkOrder
+        // itself. Without this transaction, a crash between the two calls
+        // could leave a WorkOrder that exists but will never be indexed.
+        using var transaction = _dbContext.Database.BeginTransaction();
+
         var workOrder = new WorkOrder(title, organizationId, WorkOrderStatus.Open) { CustomerId = customerId };
         _dbContext.WorkOrders.Add(workOrder);
         _dbContext.SaveChanges();
+        // workOrder.Id is now populated by the database's IDENTITY column.
+
+        foreach (var entry in buildOutboxEntries(workOrder.Id))
+        {
+            _dbContext.OutboxMessages.Add(new OutboxMessage(entry.EventType, entry.Payload));
+        }
+        _dbContext.SaveChanges();
+
+        transaction.Commit();
         return ToSummary(workOrder);
     }
 
@@ -62,7 +79,7 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
         return ToSummary(workOrder);
     }
 
-    public WorkOrderSummary? Complete(int workOrderId, string outboxEventType, string outboxPayload)
+    public WorkOrderSummary? Complete(int workOrderId, IReadOnlyList<OutboxEntry> outboxEntries)
     {
         var workOrder = _dbContext.WorkOrders.FirstOrDefault(w => w.Id == workOrderId);
         if (workOrder is null || workOrder.Status != WorkOrderStatus.InProgress)
@@ -72,13 +89,17 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
 
         workOrder.Status = WorkOrderStatus.Completed;
 
-        // Day 71: the Outbox pattern's whole point — this Add and the
-        // Status change above are tracked by the SAME DbContext and
-        // committed by the SAME SaveChanges call below, so either both
-        // land or neither does. There is no window where the work order is
-        // Completed in the database but no outbox row exists to eventually
-        // get it published.
-        _dbContext.OutboxMessages.Add(new OutboxMessage(outboxEventType, outboxPayload));
+        // Day 71: the Outbox pattern's whole point — every Add below and
+        // the Status change above are tracked by the SAME DbContext and
+        // committed by the SAME SaveChanges call, so either all of them
+        // land or none do. There is no window where the work order is
+        // Completed in the database but one of its outbox rows is missing.
+        // Day 80: now possibly MORE than one row per call (e.g. a
+        // WorkOrderCompletedEvent row and a search-index-request row).
+        foreach (var entry in outboxEntries)
+        {
+            _dbContext.OutboxMessages.Add(new OutboxMessage(entry.EventType, entry.Payload));
+        }
 
         _dbContext.SaveChanges();
         return ToSummary(workOrder);

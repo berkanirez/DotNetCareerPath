@@ -1,11 +1,8 @@
-namespace FieldOps.Api.Application;
+namespace FieldOps.NotificationService;
 
-// Day 51: today's only implementation of INotificationSender — a real
-// provider (email/SMS/push) would genuinely need to be async (a network
-// call), so the interface is async-shaped even though this demo
-// implementation does no real I/O, mirroring StockPilot Day 16's
-// InMemoryProductStore (Task.FromResult/Task.CompletedTask, no real
-// awaiting, purely to satisfy the interface).
+// Day 51 (originally in FieldOps.Api), moved here on Day 76 — today's only
+// INotificationSender implementation; a real provider (email/SMS/push)
+// would replace only this registration.
 public class LoggingNotificationSender : INotificationSender
 {
     private readonly ILogger<LoggingNotificationSender> _logger;

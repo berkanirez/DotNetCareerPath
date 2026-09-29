@@ -11,10 +11,11 @@ namespace FieldOps.Api.Application;
 // holding either directly.
 //
 // This is what actually delivers on the Outbox pattern's promise: even if
-// RabbitMQ was completely unreachable at the moment WorkOrdersController.Complete
-// ran, the outbox row it wrote still exists, unpublished, in the database —
-// this loop will keep finding and retrying it, tick after tick, until it
-// eventually succeeds. Nothing is lost to a transient RabbitMQ outage.
+// RabbitMQ (or, since Day 80, Elasticsearch) was completely unreachable at
+// the moment WorkOrdersController.Create/Complete ran, the outbox rows they
+// wrote still exist, unpublished, in the database — this loop will keep
+// finding and retrying them, tick after tick, until each one eventually
+// succeeds. Nothing is lost to a transient outage of either dependency.
 public class OutboxPublisher : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(5);
@@ -53,14 +54,16 @@ public class OutboxPublisher : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var workOrderDirectory = scope.ServiceProvider.GetRequiredService<IWorkOrderDirectory>();
         var eventPublisher = scope.ServiceProvider.GetRequiredService<IEventPublisher>();
+        var workOrderSearchIndex = scope.ServiceProvider.GetRequiredService<IWorkOrderSearchIndex>();
 
         foreach (var message in workOrderDirectory.GetUnpublishedOutboxMessages())
         {
             try
             {
-                // Day 71's only known event type — a real, general-purpose
-                // outbox would look this up in a type registry instead of a
-                // single if-check; not justified yet for one event type.
+                // Day 80: a second known EventType, alongside Day 71's
+                // original one — a real, general-purpose outbox would look
+                // this up in a type registry instead of if/else-if chain;
+                // not justified yet for just two.
                 if (message.EventType == nameof(WorkOrderCompletedEvent))
                 {
                     var domainEvent = JsonSerializer.Deserialize<WorkOrderCompletedEvent>(message.Payload);
@@ -70,6 +73,20 @@ public class OutboxPublisher : BackgroundService
                         // unique identifier for this exact message — reused
                         // as-is rather than minting a separate Guid.
                         await eventPublisher.PublishAsync(domainEvent, message.Id.ToString(), cancellationToken);
+                        workOrderDirectory.MarkOutboxMessagePublished(message.Id);
+                    }
+                }
+                else if (message.EventType == nameof(WorkOrderSearchDocument))
+                {
+                    // Day 80: the exact same tolerance the Outbox pattern
+                    // already gave RabbitMQ (Day 71), now for Elasticsearch —
+                    // if IndexAsync throws (Elasticsearch unreachable), this
+                    // row is simply never marked published, and this same
+                    // loop retries it on the next tick.
+                    var document = JsonSerializer.Deserialize<WorkOrderSearchDocument>(message.Payload);
+                    if (document is not null)
+                    {
+                        await workOrderSearchIndex.IndexAsync(document, cancellationToken);
                         workOrderDirectory.MarkOutboxMessagePublished(message.Id);
                     }
                 }

@@ -58,7 +58,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | LINQ | 3 | Phase 1–2 | Unit test, commit | 3 | In Progress |
 | Async programming | 3 | Phase 2–4 | Unit test, working endpoint | 2 | In Progress |
 | REST | 4 | Phase 2 | Working endpoint, API documentation | 2 | In Progress |
-| SOAP | 1 | Phase 4 | English technical explanation, working endpoint | 0 | Planned |
+| SOAP | 1 | Phase 4 | English technical explanation, working endpoint | 1 | In Progress |
 | Authentication | 3 | Phase 2 | Working endpoint, integration test | 0 | Planned |
 | RBAC and authorization | 4 | Phase 2–3 | Integration test, working endpoint | 0 | Planned |
 | OOP | 3 | Phase 1–3 | Commit, English technical explanation | 1 | In Progress |
@@ -71,13 +71,13 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Integration testing | 3 | Phase 2–4 | Integration test | 3 | In Progress |
 | Test automation | 3 | Phase 2, 6 | Integration test, deployment | 0 | Planned |
 | Redis | 3 | Phase 3 | Working endpoint, debugging note | 3 | In Progress |
-| Elasticsearch | 2 | Phase 4 | Working endpoint | 0 | Planned |
+| Elasticsearch | 2 | Phase 4 | Working endpoint | 2 | In Progress |
 | RabbitMQ | 3 | Phase 4 | Working user flow, debugging note | 3 | In Progress |
 | Kafka concepts | 1 | Phase 4 (conceptual only) | English technical explanation | 0 | Planned |
 | Event-driven architecture | 3 | Phase 4 | ADR, working user flow | 3 | In Progress |
 | Outbox/Inbox | 3 | Phase 4 | Unit test, integration test | 0 | Planned |
 | Modular monolith | 3 | Phase 3 | ADR, commit | 3 | In Progress |
-| Microservices | 2 | Phase 4 | ADR, deployment | 0 | Planned |
+| Microservices | 2 | Phase 4 | ADR, deployment | 2 | In Progress |
 | Docker | 3 | Phase 3–5 | Deployment, commit | 2 | In Progress |
 | CI/CD | 3 | Phase 2–6 | Deployment, pull request | 2 | In Progress |
 | Kubernetes | 2 | Phase 5 | Deployment | 0 | Planned |

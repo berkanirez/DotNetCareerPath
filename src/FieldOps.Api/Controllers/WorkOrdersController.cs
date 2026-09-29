@@ -29,6 +29,7 @@ public class WorkOrdersController : ControllerBase
     private readonly IAuditLogWriter _auditLogWriter;
     private readonly IdempotencyService _idempotencyService;
     private readonly WorkOrderNoteSummaryService _workOrderNoteSummaryService;
+    private readonly IWorkOrderSearchIndex _workOrderSearchIndex;
     private readonly ILogger<WorkOrdersController> _logger;
 
     public WorkOrdersController(
@@ -40,6 +41,7 @@ public class WorkOrdersController : ControllerBase
         IAuditLogWriter auditLogWriter,
         IdempotencyService idempotencyService,
         WorkOrderNoteSummaryService workOrderNoteSummaryService,
+        IWorkOrderSearchIndex workOrderSearchIndex,
         ILogger<WorkOrdersController> logger)
     {
         _workOrderDirectory = workOrderDirectory;
@@ -50,6 +52,7 @@ public class WorkOrdersController : ControllerBase
         _auditLogWriter = auditLogWriter;
         _idempotencyService = idempotencyService;
         _workOrderNoteSummaryService = workOrderNoteSummaryService;
+        _workOrderSearchIndex = workOrderSearchIndex;
         _logger = logger;
     }
 
@@ -89,6 +92,67 @@ public class WorkOrdersController : ControllerBase
             .ToList();
 
         return Ok(workOrders);
+    }
+
+    // Day 79: goes through IWorkOrderSearchIndex (Elasticsearch), never
+    // IWorkOrderDirectory (SQL Server) — this is deliberately the ONE
+    // read in this controller that does not go to the source of truth,
+    // because full-text relevance ranking is exactly what SQL's `LIKE`
+    // does not give.
+    [HttpGet("search")]
+    public async Task<ActionResult<IReadOnlyList<WorkOrderDto>>> Search(
+        [FromQuery] string q,
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId,
+        CancellationToken cancellationToken)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var results = await _workOrderSearchIndex.SearchAsync(organizationId!.Value, q, cancellationToken);
+        var workOrders = results
+            .Select(d => new WorkOrderDto(d.Id, d.Title, d.OrganizationId, d.Status, null, Array.Empty<string>(), null, false))
+            .ToList();
+
+        return Ok(workOrders);
+    }
+
+    // Day 81: rebuild strategy — Admin-only (same precedent as Assign, Day
+    // 41), since this is an operational action, not a normal business one.
+    // Scoped to THIS organization only: it reads every one of its own work
+    // orders straight from SQL Server (the source of truth) and rewrites
+    // them into the search index directly, bypassing the outbox entirely —
+    // there's no new business fact being announced here, just re-deriving a
+    // copy that already-known, existing data.
+    [HttpPost("search/rebuild")]
+    public async Task<ActionResult> RebuildSearchIndex(
+        [FromHeader(Name = "X-Organization-Id")] int? organizationId,
+        [FromHeader(Name = "X-Employee-Id")] int? actingEmployeeId,
+        CancellationToken cancellationToken)
+    {
+        var membershipError = ValidateMembership(organizationId, actingEmployeeId);
+        if (membershipError is not null)
+        {
+            return membershipError;
+        }
+
+        var adminError = ValidateIsAdmin(actingEmployeeId!.Value, "rebuild the search index for");
+        if (adminError is not null)
+        {
+            return adminError;
+        }
+
+        var documents = _workOrderDirectory.GetAll()
+            .Where(w => w.OrganizationId == organizationId)
+            .Select(w => new WorkOrderSearchDocument(w.Id, w.OrganizationId, w.Title, w.Status))
+            .ToList();
+
+        await _workOrderSearchIndex.RebuildOrganizationIndexAsync(organizationId!.Value, documents, cancellationToken);
+
+        return NoContent();
     }
 
     // Day 53: per-organization rate limiting — only Create today, a
@@ -138,7 +202,17 @@ public class WorkOrdersController : ControllerBase
             }
         }
 
-        var workOrder = _workOrderDirectory.Create(request.Title, organizationId!.Value, request.CustomerId);
+        // Day 80: the search-index request is now built as an outbox entry,
+        // not sent to Elasticsearch directly — OutboxPublisher delivers it
+        // later, tolerating Elasticsearch being temporarily unreachable
+        // (the exact problem Day 79 knowingly left open). The callback
+        // shape exists because this WorkOrder's Id doesn't exist yet at
+        // this point — IWorkOrderDirectory.Create calls it back with the
+        // real, database-generated Id once it actually has one.
+        var workOrder = _workOrderDirectory.Create(request.Title, organizationId!.Value, request.CustomerId, newId =>
+            [new OutboxEntry(
+                nameof(WorkOrderSearchDocument),
+                JsonSerializer.Serialize(new WorkOrderSearchDocument(newId, organizationId!.Value, request.Title, WorkOrderStatus.Open)))]);
         _workOrderReportService.InvalidateCache(organizationId.Value);
         var dto = ToDto(workOrder);
 
@@ -336,13 +410,12 @@ public class WorkOrdersController : ControllerBase
         return Ok(ToDto(updated));
     }
 
-    // Day 51: the only async action in this controller today — a deliberate,
-    // minimal exception this controller used to make, was undone here: Day 71's
-    // Outbox pattern moved event publishing out of the request entirely — the
-    // event row is written in the SAME SaveChanges call as the Status change
-    // (inside IWorkOrderDirectory.Complete), and OutboxPublisher (a separate
-    // BackgroundService) is what actually calls IEventPublisher, later,
-    // independently of this request. Complete no longer awaits anything.
+    // Day 51: originally the only async action in this controller (awaiting
+    // a notification send). Day 71's Outbox pattern moved event publishing
+    // out of the request entirely, making this synchronous. Day 79
+    // reintroduced an await for search indexing; Day 80 moves that onto the
+    // SAME outbox mechanism, so this is synchronous again — indexing no
+    // longer happens inside this request at all.
     [HttpPost("{id}/complete")]
     public ActionResult<WorkOrderDto> Complete(
         int id,
@@ -363,12 +436,21 @@ public class WorkOrdersController : ControllerBase
 
         // Day 71: built BEFORE Complete() runs, from the work order's
         // already-known Title/CustomerId (neither changes during Complete) —
-        // this is the exact payload that will end up in the outbox row,
-        // written atomically alongside the Status change itself.
+        // this is the exact payload that will end up in one of the outbox
+        // rows, written atomically alongside the Status change itself.
         var eventPayload = JsonSerializer.Serialize(
             new WorkOrderCompletedEvent(id, organizationId!.Value, workOrderBeforeCompletion!.CustomerId, workOrderBeforeCompletion.Title, DateTime.UtcNow));
 
-        var updated = _workOrderDirectory.Complete(id, nameof(WorkOrderCompletedEvent), eventPayload);
+        // Day 80: a SECOND outbox entry, alongside the first — Complete's Id
+        // is already known (unlike Create's), so no callback is needed here,
+        // just a plain list built up front.
+        var indexPayload = JsonSerializer.Serialize(
+            new WorkOrderSearchDocument(id, organizationId!.Value, workOrderBeforeCompletion.Title, WorkOrderStatus.Completed));
+
+        var updated = _workOrderDirectory.Complete(id, [
+            new OutboxEntry(nameof(WorkOrderCompletedEvent), eventPayload),
+            new OutboxEntry(nameof(WorkOrderSearchDocument), indexPayload)
+        ]);
         if (updated is null)
         {
             return BadRequest($"Work order {id} must be InProgress before it can be completed.");
