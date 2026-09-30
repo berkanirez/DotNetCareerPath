@@ -459,6 +459,11 @@ public class WorkOrdersController : ControllerBase
         _workOrderReportService.InvalidateCache(organizationId!.Value);
         _auditLogWriter.Record(organizationId!.Value, id, "Completed", "Employee", actingEmployeeId!.Value);
 
+        // Day 86: incremented only on the genuine success path — the same
+        // "only count it once the real thing happened" discipline as every
+        // other side effect in this action.
+        FieldOpsMetrics.WorkOrdersCompleted.Add(1);
+
         return Ok(ToDto(updated));
     }
 

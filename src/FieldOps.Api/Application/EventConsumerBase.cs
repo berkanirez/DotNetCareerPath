@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
@@ -92,6 +93,14 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
                     // a crash). MessageId was set by RabbitMqEventPublisher
                     // to the outbox row's own stable Id.
                     var messageId = ea.BasicProperties.MessageId;
+
+                    // Day 85: pick up the SAME trace the publisher started
+                    // (RabbitMqEventPublisher's Inject call), instead of
+                    // this consumer's work looking like an unrelated,
+                    // brand-new trace with no connection to whatever
+                    // published this message.
+                    using var activity = StartConsumerActivity(ea.BasicProperties.Headers);
+
                     try
                     {
                         using var scope = _scopeFactory.CreateScope();
@@ -249,5 +258,44 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
 
             await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
         }
+    }
+
+    // Day 85: the consumer-side half of manual trace context propagation.
+    // RabbitMQ header VALUES round-trip as byte[] once a message has
+    // actually been delivered (even though we wrote a plain string on the
+    // publish side) — this getter has to decode that back to UTF8 text
+    // before DistributedContextPropagator can parse it as a traceparent.
+    private static Activity? StartConsumerActivity(IDictionary<string, object?>? headers)
+    {
+        DistributedContextPropagator.Current.ExtractTraceIdAndState(
+            headers,
+            static (object? carrier, string fieldName, out string? fieldValue, out IEnumerable<string>? fieldValues) =>
+            {
+                fieldValues = null;
+                fieldValue = null;
+                if (carrier is IDictionary<string, object?> dict && dict.TryGetValue(fieldName, out var value))
+                {
+                    fieldValue = value switch
+                    {
+                        byte[] bytes => Encoding.UTF8.GetString(bytes),
+                        string s => s,
+                        _ => null
+                    };
+                }
+            },
+            out var traceParent,
+            out var traceState);
+
+        var parentContext = default(ActivityContext);
+        if (!string.IsNullOrEmpty(traceParent))
+        {
+            ActivityContext.TryParse(traceParent, traceState, out parentContext);
+        }
+
+        // If no valid parent was found (e.g. an old message with no
+        // headers), this still starts a brand-new, unparented trace rather
+        // than silently skipping tracing altogether.
+        return FieldOpsTracing.MessagingSource.StartActivity(
+            $"consume {typeof(TEvent).Name}", ActivityKind.Consumer, parentContext);
     }
 }

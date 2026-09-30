@@ -84,7 +84,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Azure | 2 | Phase 5 | Deployment | 0 | Planned |
 | Performance | 3 | Phase 6 | Load-test result, debugging note | 0 | Planned |
 | Structured logging | 3 | Phase 3 | Debugging note, working endpoint | 1 | In Progress |
-| Observability | 2 | Phase 4 | Debugging note | 0 | Planned |
+| Observability | 2 | Phase 4 | Debugging note | 2 | In Progress |
 | Angular | 2 | Phase 5 | Working user flow | 0 | Planned |
 | Git | 3 | Phase 1–6 | Commit, pull request | 0 | Planned |
 | Scrum | 1 | Ongoing (conceptual) | English technical explanation | 0 | Planned |

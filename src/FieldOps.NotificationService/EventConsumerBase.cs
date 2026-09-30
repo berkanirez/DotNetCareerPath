@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
@@ -62,6 +63,14 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
                 consumer.ReceivedAsync += async (_, ea) =>
                 {
                     var messageId = ea.BasicProperties.MessageId;
+
+                    // Day 85: pick up the SAME trace FieldOps.Api's
+                    // RabbitMqEventPublisher started, instead of this
+                    // consumer's work looking like an unrelated trace with
+                    // no connection to whatever published this message —
+                    // even though this is a genuinely separate process.
+                    using var activity = StartConsumerActivity(ea.BasicProperties.Headers);
+
                     try
                     {
                         using var scope = _scopeFactory.CreateScope();
@@ -195,5 +204,39 @@ public abstract class EventConsumerBase<TEvent> : BackgroundService
 
             await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
         }
+    }
+
+    // Day 85: this service's own copy of FieldOps.Api's identical helper —
+    // header VALUES round-trip as byte[] once a message has actually been
+    // delivered, even though the publisher wrote a plain string.
+    private static Activity? StartConsumerActivity(IDictionary<string, object?>? headers)
+    {
+        DistributedContextPropagator.Current.ExtractTraceIdAndState(
+            headers,
+            static (object? carrier, string fieldName, out string? fieldValue, out IEnumerable<string>? fieldValues) =>
+            {
+                fieldValues = null;
+                fieldValue = null;
+                if (carrier is IDictionary<string, object?> dict && dict.TryGetValue(fieldName, out var value))
+                {
+                    fieldValue = value switch
+                    {
+                        byte[] bytes => Encoding.UTF8.GetString(bytes),
+                        string s => s,
+                        _ => null
+                    };
+                }
+            },
+            out var traceParent,
+            out var traceState);
+
+        var parentContext = default(ActivityContext);
+        if (!string.IsNullOrEmpty(traceParent))
+        {
+            ActivityContext.TryParse(traceParent, traceState, out parentContext);
+        }
+
+        return FieldOpsTracing.MessagingSource.StartActivity(
+            $"consume {typeof(TEvent).Name}", ActivityKind.Consumer, parentContext);
     }
 }

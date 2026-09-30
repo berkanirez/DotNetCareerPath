@@ -176,7 +176,7 @@ internal class EfWorkOrderDirectory : IWorkOrderDirectory
         return _dbContext.OutboxMessages
             .Where(m => m.PublishedAtUtc == null)
             .OrderBy(m => m.CreatedAtUtc)
-            .Select(m => new OutboxMessageSummary(m.Id, m.EventType, m.Payload))
+            .Select(m => new OutboxMessageSummary(m.Id, m.EventType, m.Payload, m.CreatedAtUtc))
             .ToList();
     }
 

@@ -5,6 +5,9 @@ using FieldOps.Modules.Customers;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.Organizations;
 using FieldOps.Modules.WorkOrders;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using StackExchange.Redis;
 using System.Threading.RateLimiting;
 
@@ -21,6 +24,30 @@ builder.Logging.AddJsonConsole(options =>
     options.IncludeScopes = true;
     options.JsonWriterOptions = new System.Text.Json.JsonWriterOptions { Indented = false };
 });
+
+// Day 85: distributed tracing. AddAspNetCoreInstrumentation covers every
+// inbound HTTP request automatically (no manual span needed, unlike
+// RabbitMQ's publish/consume below); AddSource registers FieldOpsTracing's
+// own ActivitySource so ITS manually-started spans are actually collected
+// too — an ActivitySource nobody's "listening" to produces Activities that
+// silently go nowhere. AddConsoleExporter is today's simplest possible
+// "where do traces go" — printing them to the same console the JSON logs
+// already go to, not a real trace backend like Jaeger/Zipkin.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("FieldOps.Api"))
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddSource(FieldOpsTracing.MessagingSourceName)
+        .AddConsoleExporter())
+    // Day 86: metrics — the AGGREGATE counterpart to tracing's per-request
+    // story. AddAspNetCoreInstrumentation here (a metrics-specific overload,
+    // unrelated to the tracing one above) gives request-count/duration
+    // numbers for free; AddMeter registers FieldOpsMetrics's own Meter, the
+    // same "nobody's listening = numbers go nowhere" reasoning as AddSource.
+    .WithMetrics(metrics => metrics
+        .AddAspNetCoreInstrumentation()
+        .AddMeter(FieldOpsMetrics.MeterName)
+        .AddConsoleExporter());
 
 // Add services to the container.
 

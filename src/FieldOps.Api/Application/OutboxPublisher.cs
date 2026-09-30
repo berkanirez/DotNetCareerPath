@@ -74,6 +74,7 @@ public class OutboxPublisher : BackgroundService
                         // as-is rather than minting a separate Guid.
                         await eventPublisher.PublishAsync(domainEvent, message.Id.ToString(), cancellationToken);
                         workOrderDirectory.MarkOutboxMessagePublished(message.Id);
+                        RecordPublishLag(message.CreatedAtUtc);
                     }
                 }
                 else if (message.EventType == nameof(WorkOrderSearchDocument))
@@ -88,6 +89,7 @@ public class OutboxPublisher : BackgroundService
                     {
                         await workOrderSearchIndex.IndexAsync(document, cancellationToken);
                         workOrderDirectory.MarkOutboxMessagePublished(message.Id);
+                        RecordPublishLag(message.CreatedAtUtc);
                     }
                 }
                 else
@@ -105,5 +107,15 @@ public class OutboxPublisher : BackgroundService
                 _logger.LogWarning(ex, "Failed to publish outbox message {OutboxMessageId}", message.Id);
             }
         }
+    }
+
+    // Day 86: recorded only on genuine success — a message that's still
+    // sitting in the outbox because Elasticsearch/RabbitMQ is down should
+    // NOT count toward this histogram yet; its eventual, larger lag gets
+    // recorded once it actually succeeds, on whatever later tick that is.
+    private static void RecordPublishLag(DateTime createdAtUtc)
+    {
+        var lag = DateTime.UtcNow - createdAtUtc;
+        FieldOpsMetrics.OutboxPublishLagSeconds.Record(lag.TotalSeconds);
     }
 }

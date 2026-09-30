@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using RabbitMQ.Client;
@@ -24,6 +25,15 @@ public class RabbitMqEventPublisher : IEventPublisher
 
     public async Task PublishAsync<TEvent>(TEvent domainEvent, string messageId, CancellationToken cancellationToken)
     {
+        // Day 85: RabbitMQ.Client has no built-in OpenTelemetry
+        // instrumentation — unlike the inbound HTTP request (auto-covered
+        // by AddAspNetCoreInstrumentation), this span has to be started and
+        // propagated BY HAND. ActivityKind.Producer marks this as the
+        // sending half of a producer/consumer pair — the OpenTelemetry
+        // convention for messaging systems.
+        using var activity = FieldOpsTracing.MessagingSource.StartActivity(
+            $"publish {typeof(TEvent).Name}", ActivityKind.Producer);
+
         var factory = new ConnectionFactory { HostName = _hostName };
         await using var connection = await factory.CreateConnectionAsync(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
@@ -40,11 +50,26 @@ public class RabbitMqEventPublisher : IEventPublisher
 
         var json = JsonSerializer.Serialize(domainEvent);
         var body = Encoding.UTF8.GetBytes(json);
+
+        // Day 85: this is the actual "trace context propagation" — this
+        // process's current trace/span id, written into the message's own
+        // headers so that whichever process consumes it later (a genuinely
+        // different process, possibly minutes from now) can pick up the
+        // SAME trace instead of starting an unrelated one.
+        var headers = new Dictionary<string, object?>();
+        if (activity is not null)
+        {
+            DistributedContextPropagator.Current.Inject(
+                activity,
+                headers,
+                static (carrier, key, value) => ((Dictionary<string, object?>)carrier!)[key] = value);
+        }
+
         await channel.BasicPublishAsync(
             exchange: exchangeName,
             routingKey: string.Empty, // a fanout exchange ignores the routing key entirely
             mandatory: false,
-            basicProperties: new BasicProperties { MessageId = messageId },
+            basicProperties: new BasicProperties { MessageId = messageId, Headers = headers },
             body: (ReadOnlyMemory<byte>)body,
             cancellationToken: cancellationToken);
     }
