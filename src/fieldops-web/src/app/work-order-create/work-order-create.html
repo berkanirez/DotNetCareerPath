@@ -1,0 +1,17 @@
+<h2>New Work Order</h2>
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <div>
+    <label for="title">Title</label>
+    <input id="title" type="text" formControlName="title" />
+    @if (form.controls.title.invalid && form.controls.title.touched) {
+      <p>Title is required (max 200 characters).</p>
+    }
+  </div>
+
+  <div>
+    <label for="customerId">Customer Id (optional)</label>
+    <input id="customerId" type="number" formControlName="customerId" />
+  </div>
+
+  <button type="submit" [disabled]="form.invalid">Create</button>
+</form>

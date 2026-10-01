@@ -1,0 +1,11 @@
+<h2>Work Order Dashboard</h2>
+@if (report(); as r) {
+  <ul>
+    <li>Open: {{ r.open }}</li>
+    <li>Assigned: {{ r.assigned }}</li>
+    <li>In Progress: {{ r.inProgress }}</li>
+    <li>Completed: {{ r.completed }}</li>
+  </ul>
+} @else {
+  <p>Loading...</p>
+}

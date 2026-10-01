@@ -1,0 +1,23 @@
+<h2>Work Orders</h2>
+<a routerLink="/dashboard">Dashboard</a>
+@if (authService.isAdmin()) {
+  <a routerLink="/work-orders/new">+ New Work Order</a>
+}
+<table>
+  <thead>
+    <tr>
+      <th>Id</th>
+      <th>Title</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (workOrder of workOrders(); track workOrder.id) {
+      <tr>
+        <td>{{ workOrder.id }}</td>
+        <td><a [routerLink]="['/work-orders', workOrder.id]">{{ workOrder.title }}</a></td>
+        <td>{{ statusLabels[workOrder.status] }}</td>
+      </tr>
+    }
+  </tbody>
+</table>

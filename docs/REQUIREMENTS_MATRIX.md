@@ -59,7 +59,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Async programming | 3 | Phase 2–4 | Unit test, working endpoint | 2 | In Progress |
 | REST | 4 | Phase 2 | Working endpoint, API documentation | 2 | In Progress |
 | SOAP | 1 | Phase 4 | English technical explanation, working endpoint | 1 | In Progress |
-| Authentication | 3 | Phase 2 | Working endpoint, integration test | 0 | Planned |
+| Authentication | 3 | Phase 2 | Working endpoint, integration test | 1 | In Progress |
 | RBAC and authorization | 4 | Phase 2–3 | Integration test, working endpoint | 0 | Planned |
 | OOP | 3 | Phase 1–3 | Commit, English technical explanation | 1 | In Progress |
 | SOLID | 3 | Phase 3 | ADR, commit | 0 | Planned |
@@ -85,7 +85,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Performance | 3 | Phase 6 | Load-test result, debugging note | 0 | Planned |
 | Structured logging | 3 | Phase 3 | Debugging note, working endpoint | 1 | In Progress |
 | Observability | 2 | Phase 4 | Debugging note | 2 | In Progress |
-| Angular | 2 | Phase 5 | Working user flow | 0 | Planned |
+| Angular | 2 | Phase 5 | Working user flow | 2 | In Progress |
 | Git | 3 | Phase 1–6 | Commit, pull request | 0 | Planned |
 | Scrum | 1 | Ongoing (conceptual) | English technical explanation | 0 | Planned |
 | English communication | 3 | Phase 6 (all phases practiced) | English technical explanation | 0 | Planned |

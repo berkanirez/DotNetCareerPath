@@ -1,3 +1,4 @@
+using System.Text;
 using Elastic.Clients.Elasticsearch;
 using FieldOps.Api.Application;
 using FieldOps.Modules.AuditLogs;
@@ -5,6 +6,8 @@ using FieldOps.Modules.Customers;
 using FieldOps.Modules.Employees;
 using FieldOps.Modules.Organizations;
 using FieldOps.Modules.WorkOrders;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -54,6 +57,44 @@ builder.Services.AddOpenTelemetry()
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// Day 90: the browser blocks a cross-origin request (fieldops-web on
+// localhost:4200 calling this API on a different port) unless the server
+// explicitly allows that origin — CORS is a browser-enforced rule, not
+// something curl/Postman (used by every earlier day's verification) ever
+// had to satisfy. Scoped to exactly the Angular dev server's origin, not a
+// wildcard, same "no broader than the real problem" spirit as Day 53's
+// rate-limit partitioning.
+var angularDevOrigin = builder.Configuration["Cors:AngularDevOrigin"] ?? "http://localhost:4200";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AngularDev", policy => policy
+        .WithOrigins(angularDevOrigin)
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
+
+// Day 93: token ISSUANCE only today (AuthController.Login) — no endpoint is
+// decorated with [Authorize] yet, and the existing X-Organization-Id/
+// X-Employee-Id header mechanism (Day 40) stays exactly as it was. This
+// registers the machinery to VALIDATE a bearer token when a later day
+// actually starts requiring one; until then it has nothing to do.
+var jwtSigningKey = builder.Configuration["Jwt:SigningKey"] ?? "fieldops-dev-only-fallback-signing-key-do-not-use-in-production";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "FieldOps.Api";
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtIssuer,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSigningKey)),
+        };
+    });
 
 // The host installs each module through its own extension method — it never
 // names any module's internal concrete implementation class (or its
@@ -264,7 +305,16 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 
 app.UseHttpsRedirection();
 
+// Day 90: must run before UseAuthorization/MapControllers so a preflight
+// (OPTIONS) request is answered correctly before reaching any endpoint.
+app.UseCors("AngularDev");
+
 app.UseRateLimiter();
+
+// Day 93: must run before UseAuthorization so a bearer token (once something
+// actually requires one) is validated and its claims attached to the
+// request before any authorization check runs.
+app.UseAuthentication();
 
 app.UseAuthorization();
 

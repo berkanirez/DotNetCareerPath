@@ -1,0 +1,9 @@
+@if (workOrder(); as order) {
+  <h2>Work Order #{{ order.id }}</h2>
+  <p><strong>Title:</strong> {{ order.title }}</p>
+  <p><strong>Status:</strong> {{ statusLabels[order.status] }}</p>
+} @else if (notFound()) {
+  <p>No work order found with that id.</p>
+}
+
+<a routerLink="/">Back to list</a>

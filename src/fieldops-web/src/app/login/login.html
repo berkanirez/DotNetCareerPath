@@ -1,0 +1,13 @@
+<h2>Login</h2>
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <div>
+    <label for="employeeId">Employee Id</label>
+    <input id="employeeId" type="number" formControlName="employeeId" />
+  </div>
+
+  @if (errorMessage()) {
+    <p>{{ errorMessage() }}</p>
+  }
+
+  <button type="submit" [disabled]="form.invalid">Login</button>
+</form>
