@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 5 — Angular, Kubernetes, and Cloud, **Week 19 (second week of Phase 5)** (Week 18 complete)
 * **Week:** 19 — in progress
-* **Day:** 97 (complete)
-* **Active project:** FieldOps SaaS Modular Monolith (now with `src/fieldops-web`, which has its own Dockerfile as of today)
-* **Status:** First Dockerfile for `fieldops-web` — a multi-stage build (`node:24-alpine` build stage → `nginx:alpine` final stage, 94MB final image), the Angular counterpart to `FieldOps.Api`'s Day 58 Dockerfile. **Live-verified with a real running container:** `curl http://localhost:8080/` → `200`, real compiled `index.html`/JS served. **A real, predicted-then-confirmed limitation:** `curl http://localhost:8080/work-orders/28` → `404` — nginx has no client-side-routing fallback configured yet, so Angular's own router never gets a chance to handle a direct deep link; explicitly left as a known gap for a later Week 19 day, not fixed today. `ng test` (30/30, source unchanged) and `dotnet build` (0/0, no backend changes) both clean. Docker Desktop needed to be started manually at the top of the session (not running after the environment restart) before the build could proceed. Still unresolved: the Phase 2/Phase 5 `REQUIREMENTS_MATRIX.md` conflict from Day 93; whether/when Berkan wants his local SQL Express database's accumulated demo/test data cleaned up.
+* **Day:** 98 (complete)
+* **Active project:** FieldOps SaaS Modular Monolith (now with `src/fieldops-web`, which has its own Dockerfile as of Day 97)
+* **Status:** Day 97's live-caught nginx routing gap fixed. New `nginx.conf` (`try_files $uri $uri/ /index.html;`) replaces nginx's bundled default config via the `Dockerfile`. **Live, decisive re-test:** `curl http://localhost:8081/work-orders/28` → `200` (was `404` yesterday), body confirmed to genuinely be the Angular app; `/login`, `/dashboard`, `/work-orders/new` all `200` too; the real static JS file still served correctly, confirming `try_files` didn't break normal asset serving. No Angular/backend source changed — a Docker-config-only day, so `ng test`/`dotnet test` were correctly judged unnecessary. Still unresolved: the Phase 2/Phase 5 `REQUIREMENTS_MATRIX.md` conflict from Day 93; whether/when Berkan wants his local SQL Express database's accumulated demo/test data cleaned up.
 * **Available study time:** 2 hours/day
-* **Progress:** ~88% (Day 97 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~89% (Day 98 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -701,6 +701,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Live-verified with a real running container:** `docker build` → 94MB final image; `curl http://localhost:8080/` → `200`, real compiled `index.html`/JS. **A real, predicted-then-confirmed limitation:** `curl http://localhost:8080/work-orders/28` → `404` — nginx has no client-side-routing fallback yet, so Angular's router never gets the request; explicitly left as a later Week 19 day's problem.
 * `ng test` (30/30, Angular source unchanged) clean; `dotnet build` (0/0, no backend changes) clean. Docker Desktop had to be started manually at the top of the session (not running after the restart) before `docker build` could succeed.
 * `docs/REQUIREMENTS_MATRIX.md`: no change — "Docker" already at 2/3 from earlier backend work; today strengthens evidence but doesn't add the still-missing "commit" evidence on its own.
+* The end-of-session Q&A was declined ("direkt diğer güne geçelim"); all three questions and the independent task answered by Claude directly, recorded honestly: (1) why `package.json`/`package-lock.json` are copied before the rest of the source — Docker's layer cache keys on each instruction's inputs, so dependency-manifest-only copying lets an unchanged `npm ci` layer be reused when only app source changes; (2) what could go wrong without `node_modules` in `.dockerignore` — locally-installed native bindings (e.g. `esbuild`) could be Windows-specific and wrong inside the Linux container; (3) why the final image is only 94MB — `COPY --from=build` pulls only the compiled static-file folder into a fresh `nginx:alpine` base, the Node build stage's own size never counts toward the final image. Independent task (shell into the container, confirm no node/npm) left for Berkan.
+* **Day 98.** nginx routing fix — `nginx.conf` (new, `location / { try_files $uri $uri/ /index.html; }`) added; `Dockerfile` now `COPY`s it over nginx's bundled default config, which had no client-side-routing fallback.
+* **Live, decisive re-test of yesterday's exact failure:** `curl http://localhost:8081/work-orders/28` → `200` (was `404` Day 97), body confirmed genuinely Angular's `index.html`; `/login`/`/dashboard`/`/work-orders/new` all `200`; the real static JS file still served correctly, confirming `try_files` didn't break normal asset serving.
+* No Angular/backend source changed — a Docker-config-only day, so `ng test`/`dotnet test` were correctly judged unnecessary. The superseded `fieldops-web:day97` image was removed after the fixed `day98` image was verified.
+* `docs/REQUIREMENTS_MATRIX.md`: no change.
 * Understanding questions and independent task not yet posed to Berkan this turn — to be asked at the actual end-of-session close-out.
 
 ## Decisions on record
@@ -729,7 +734,7 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 5, **Week 19**, Day 98 — Day 97 (a working multi-stage Dockerfile for `fieldops-web`, live-verified with a real container) is complete. Next topic: likely fixing today's nginx client-side-routing gap (`try_files` fallback) and/or wiring `fieldops-web` into `docker-compose.yml`, per Week 19's roadmap. Exact Day 98 scope to be confirmed at the start of the session.
+2. Begin Phase 5, **Week 19**, Day 99 — Day 98 (nginx client-side-routing fallback, live-verified by re-testing yesterday's exact `404` and confirming it's now `200`) is complete. Next topic: likely wiring `fieldops-web` into `docker-compose.yml` alongside `FieldOps.Api`, or moving into container-image/Kubernetes topics, per Week 19's roadmap. Exact Day 99 scope to be confirmed at the start of the session.
 3. Unresolved: `REQUIREMENTS_MATRIX.md`'s "Authentication" row says "Phase 2" while `ROADMAP.md` places JWT in Phase 5/Week 18 — ask Berkan whether the matrix label is simply stale and should be corrected.
 4. Still outstanding from Day 88: ask Berkan whether he wants his real local SQL Express database's accumulated demo/test data (work orders titled "Day 76" through "Day 88", plus Day 92's additions) cleaned up — a destructive action requiring his explicit confirmation, never done unilaterally.
 5. Wait for approval (`UYGULA`) before creating or editing any application files.

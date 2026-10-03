@@ -20,3 +20,8 @@ RUN npm run build
 # already-built static files plus a web server to serve them.
 FROM nginx:alpine AS final
 COPY --from=build /app/dist/fieldops-web/browser /usr/share/nginx/html
+# Day 98: replaces nginx's own default site config, which has no idea about
+# Angular's client-side routing (Day 91) — without this, any direct hit on
+# a route like /work-orders/28 404s, because nginx looks for a literal file
+# at that path instead of handing the request to Angular's router.
+COPY nginx.conf /etc/nginx/conf.d/default.conf

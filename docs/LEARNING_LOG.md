@@ -3385,6 +3385,35 @@ He then declined the day's actual three questions ("anladım diğer güne geçel
 
 **`docs/REQUIREMENTS_MATRIX.md`:** No change — "Docker" is already at 2/3 from earlier backend work (Day 58, Days 76-78's compose work); today strengthens that evidence with a second real Dockerfile but doesn't by itself add the still-missing "commit" evidence (nothing committed yet this session).
 
-**Understanding questions and independent task:** Not yet asked this turn — to be asked at the actual end-of-session close-out.
+**Understanding questions and independent task:** Declined in favor of moving straight to the next day ("direkt diğer güne geçelim"); all three questions and the independent task answered by Claude directly, recorded honestly. Q1 (why `COPY package.json package-lock.json ./` is its own line before `COPY . .`): Docker caches each instruction as a layer keyed by its inputs — if only application source changes (the common case day to day) but the dependency manifests don't, Docker reuses the cached `npm ci` layer instead of re-running it, saving real build time; putting both COPYs together would invalidate that cache on every single source change, since Docker can't tell dependency changes apart from source changes once they're combined. Q2 (what would go wrong without `node_modules` in `.dockerignore`): a locally-installed `node_modules` from this Windows machine could contain native-compiled bindings (e.g. for `esbuild`, `@parcel/watcher`, both of which this project's own `npm warn install-scripts` output flagged as having install scripts) built for Windows, which would be silently wrong inside the Linux-based container — `COPY . .` would ship them anyway unless explicitly excluded, masked by the fact the container then also runs `npm ci` and overwrites most of it, but wastes build time and risks an inconsistent partial copy. Q3 (why the final image is only 94MB): the `node:24-alpine` build stage (which includes the Node runtime, npm, and briefly `node_modules`) is considerably larger, but `COPY --from=build` only pulls the specific `/app/dist/fieldops-web/browser` folder (the compiled HTML/CSS/JS, a few hundred KB) into a fresh `nginx:alpine` base — the Node stage's own size never factors into the final image at all, since Docker only keeps the layers in the stage actually referenced by the last `FROM`. Independent task (shell into the container and confirm no `node`/`npm`) — not run this turn, left for Berkan to do independently.
 
 **Next session:** Phase 5, Week 19, Day 98 — likely fixing today's nginx routing gap (a `try_files` fallback) and/or wiring `fieldops-web` into `docker-compose.yml` alongside `FieldOps.Api`, per the roadmap's Week 19 topics. Exact scope to be confirmed at the start of the session. Still outstanding: the Phase 2 vs. Phase 5 matrix conflict; whether/when Berkan wants his local SQL Express database's accumulated demo/test data cleaned up.
+
+### 2026-10-02 (continued) — Phase 5, Week 19, Day 98
+
+**Topic:** Fixing Day 97's own live-caught gap — adding nginx client-side-routing fallback so a direct hit on any Angular route (`/work-orders/28`, `/login`, etc.) works inside the container, not just the home page.
+
+**Problem solved:** Day 97 proved live that nginx's default config 404s on any URL that isn't a literal file/folder — meaning every Angular route except `/` was unreachable by direct navigation (only reachable by first loading `/` and then client-side-navigating via `routerLink`, which never triggers a fresh server request).
+
+**What I implemented:**
+* `nginx.conf` (new): a minimal `server` block with `location / { try_files $uri $uri/ /index.html; }` — try the literal file, then the literal folder, then fall back to serving `index.html` for anything else (letting Angular's own router, running as JavaScript inside that HTML, interpret the URL itself).
+* `Dockerfile`: added `COPY nginx.conf /etc/nginx/conf.d/default.conf`, replacing nginx's own bundled default config (which has no such fallback) with this one.
+
+**Runtime flow:** A request for `/work-orders/28` → nginx finds no literal file/folder matching it → falls through to serving `index.html` → the browser loads and runs Angular → Angular's router reads the real URL from the browser's address bar and renders `WorkOrderDetail` — all without nginx needing to know anything about Angular's own route table.
+
+**Verification:**
+* `docker build -t fieldops-web:day98 .` succeeded (no source-code changes, so `ng test`/`dotnet test` were correctly judged unnecessary — a Docker-config-only day).
+* **Live, decisive re-test of exactly what failed yesterday:** a fresh container run, `curl http://localhost:8081/work-orders/28` → `200` (yesterday: `404`), body confirmed to genuinely be `index.html` (`<app-root` found). Every other route tested too — `/login`, `/dashboard`, `/work-orders/new` — all `200`. The real static JS file was separately confirmed still served correctly (`200`), proving `try_files` didn't break normal asset serving while fixing the fallback case.
+* Cleanup: container stopped/removed; the now-superseded `fieldops-web:day97` image removed (Day 98's image is the one worth keeping).
+
+**Evidence:** The exact failing case from yesterday was re-run against the fixed container and flipped from `404` to `200`, with the response body independently checked to confirm it was really serving the Angular app and not some other fallback — the most direct possible proof a fix actually works.
+
+**Mistakes or difficulties:** A minor tooling snag, not a real bug: Git Bash's automatic path-conversion mangled a couple of `curl` test commands whose arguments started with `/` (e.g. `/login`), printing a Windows path instead of the intended label; resolved by setting `MSYS_NO_PATHCONV=1` for those calls. Purely cosmetic — the actual `curl` requests were unaffected either way.
+
+**Production considerations:** Today's `nginx.conf` only adds the routing fallback — no gzip compression, cache headers, or security headers (`X-Frame-Options`, etc.), all of which a real production nginx config would include; deliberately out of today's narrow scope.
+
+**`docs/REQUIREMENTS_MATRIX.md`:** No change — this closes a gap in the same Dockerfile evidence as Day 97, not a new category.
+
+**Understanding questions and independent task:** Not yet asked this turn — to be asked at the actual end-of-session close-out.
+
+**Next session:** Phase 5, Week 19, Day 99 — likely wiring `fieldops-web` into `docker-compose.yml` alongside `FieldOps.Api` and its dependencies, or moving into container-image/Kubernetes-adjacent topics per the roadmap. Exact scope to be confirmed at the start of the session. Still outstanding: the Phase 2 vs. Phase 5 matrix conflict; whether/when Berkan wants his local SQL Express database's accumulated demo/test data cleaned up.
