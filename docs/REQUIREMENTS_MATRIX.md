@@ -80,7 +80,7 @@ All roadmap-specific current levels are initialized at **0** and status **Planne
 | Microservices | 2 | Phase 4 | ADR, deployment | 2 | In Progress |
 | Docker | 3 | Phase 3–5 | Deployment, commit | 2 | In Progress |
 | CI/CD | 3 | Phase 2–6 | Deployment, pull request | 2 | In Progress |
-| Kubernetes | 2 | Phase 5 | Deployment | 0 | Planned |
+| Kubernetes | 2 | Phase 5 | Deployment | 1 | In Progress |
 | Azure | 2 | Phase 5 | Deployment | 0 | Planned |
 | Performance | 3 | Phase 6 | Load-test result, debugging note | 0 | Planned |
 | Structured logging | 3 | Phase 3 | Debugging note, working endpoint | 1 | In Progress |

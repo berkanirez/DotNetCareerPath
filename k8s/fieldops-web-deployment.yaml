@@ -1,0 +1,26 @@
+# Day 99: the first Kubernetes manifest in this repo. fieldops-web is the
+# deliberate starting point — stateless, no database/Redis/RabbitMQ, no
+# secrets — so today is purely about Kubernetes's own core concepts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fieldops-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fieldops-web
+  template:
+    metadata:
+      labels:
+        app: fieldops-web
+    spec:
+      containers:
+        - name: fieldops-web
+          image: fieldops-web:day98
+          # The image only exists locally (built on Day 98, never pushed to
+          # any registry) — "Always" would make Kubernetes try, and fail, to
+          # pull it from Docker Hub. A real registry is Week 20's topic.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80

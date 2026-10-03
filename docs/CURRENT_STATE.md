@@ -7,11 +7,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Setup phase:** Complete
 * **Roadmap phase:** Phase 5 — Angular, Kubernetes, and Cloud, **Week 19 (second week of Phase 5)** (Week 18 complete)
 * **Week:** 19 — in progress
-* **Day:** 98 (complete)
-* **Active project:** FieldOps SaaS Modular Monolith (now with `src/fieldops-web`, which has its own Dockerfile as of Day 97)
-* **Status:** Day 97's live-caught nginx routing gap fixed. New `nginx.conf` (`try_files $uri $uri/ /index.html;`) replaces nginx's bundled default config via the `Dockerfile`. **Live, decisive re-test:** `curl http://localhost:8081/work-orders/28` → `200` (was `404` yesterday), body confirmed to genuinely be the Angular app; `/login`, `/dashboard`, `/work-orders/new` all `200` too; the real static JS file still served correctly, confirming `try_files` didn't break normal asset serving. No Angular/backend source changed — a Docker-config-only day, so `ng test`/`dotnet test` were correctly judged unnecessary. Still unresolved: the Phase 2/Phase 5 `REQUIREMENTS_MATRIX.md` conflict from Day 93; whether/when Berkan wants his local SQL Express database's accumulated demo/test data cleaned up.
+* **Day:** 99 (complete)
+* **Active project:** FieldOps SaaS Modular Monolith (`src/fieldops-web` now also has Kubernetes manifests under `k8s/`)
+* **Status:** First Kubernetes day. Docker Desktop's built-in Kubernetes enabled by Berkan (GUI; kubeadm mode, `docker-desktop` node `Ready`, v1.34.1). New `k8s/fieldops-web-deployment.yaml` (2 replicas, `fieldops-web:day98`, `imagePullPolicy: IfNotPresent` since the image was never pushed to a registry) and `k8s/fieldops-web-service.yaml` (`ClusterIP`). **Live-verified:** both Pods `Running` in ~10s; via `port-forward`, `/` and `/work-orders/28` both `200` (Day 98's routing fix holds inside Kubernetes too). **Self-healing demonstrated live:** a Pod was deleted by hand and Kubernetes replaced it with a brand-new Pod within 6 seconds, the Deployment never leaving `2/2`. Resources removed afterwards with `kubectl delete -f k8s/` (cluster stays enabled). No source code changed — `ng test`/`dotnet test` unnecessary. `REQUIREMENTS_MATRIX.md` "Kubernetes" 0 → 1. Still unresolved: the Phase 2/Phase 5 `REQUIREMENTS_MATRIX.md` conflict from Day 93; whether/when Berkan wants his local SQL Express database's accumulated demo/test data cleaned up.
 * **Available study time:** 2 hours/day
-* **Progress:** ~89% (Day 98 of 110 total study days across the 22-week roadmap)
+* **Progress:** ~90% (Day 99 of 110 total study days across the 22-week roadmap)
 
 ## Completed items
 
@@ -706,6 +706,11 @@ This file reflects the actual current state of the learning journey. It must alw
 * **Live, decisive re-test of yesterday's exact failure:** `curl http://localhost:8081/work-orders/28` → `200` (was `404` Day 97), body confirmed genuinely Angular's `index.html`; `/login`/`/dashboard`/`/work-orders/new` all `200`; the real static JS file still served correctly, confirming `try_files` didn't break normal asset serving.
 * No Angular/backend source changed — a Docker-config-only day, so `ng test`/`dotnet test` were correctly judged unnecessary. The superseded `fieldops-web:day97` image was removed after the fixed `day98` image was verified.
 * `docs/REQUIREMENTS_MATRIX.md`: no change.
+* The end-of-session Q&A was declined ("tamam diğer güne geçelim"); all three questions and the independent task answered by Claude directly, recorded honestly: (1) `try_files` tries the literal file, then the literal directory, and only then `/index.html` — last so real assets are never swallowed by the fallback; (2) the fallback doesn't matter for users who only enter at `/` and click `routerLink`s — client-side navigation never sends nginx a new request; it matters for typed URLs, bookmarks, refreshes, and shared links; (3) the two `COPY` lines' order doesn't matter — they write to unrelated paths. Independent task (open a deep link directly in a real browser) left for Berkan.
+* **Day 99.** First Kubernetes day — Docker Desktop's built-in Kubernetes enabled by Berkan (a GUI setting; kubeadm mode, chosen so locally-built images are visible to the cluster). `k8s/fieldops-web-deployment.yaml` (2 replicas, `imagePullPolicy: IfNotPresent`) and `k8s/fieldops-web-service.yaml` (`ClusterIP`, connected to the Pods only through the shared `app: fieldops-web` label). `fieldops-web` deliberately chosen first: stateless, no dependencies, no secrets.
+* **Live verification:** 2/2 Pods `Running` in ~10s; through the Service via `port-forward`, `/` and `/work-orders/28` both `200`. **Self-healing observed live:** a Pod deleted by hand was replaced by a brand-new one within 6 seconds, the Deployment staying at `2/2` throughout.
+* No source code changed (only YAML added) — `ng test`/`dotnet test` correctly judged unnecessary. Resources removed afterwards (`kubectl delete -f k8s/`); the manifests stay in the repo for re-use.
+* `docs/REQUIREMENTS_MATRIX.md`: "Kubernetes" 0 → 1 (In Progress) — a real local deployment now exists; probes/Ingress/autoscaling and the backend are still ahead.
 * Understanding questions and independent task not yet posed to Berkan this turn — to be asked at the actual end-of-session close-out.
 
 ## Decisions on record
@@ -734,7 +739,7 @@ This file reflects the actual current state of the learning journey. It must alw
 ## Next action
 
 1. Read all five required documents (`CLAUDE.md`, `docs/ROADMAP.md`, `docs/CURRENT_STATE.md`, `docs/REQUIREMENTS_MATRIX.md`, `docs/LEARNING_LOG.md`).
-2. Begin Phase 5, **Week 19**, Day 99 — Day 98 (nginx client-side-routing fallback, live-verified by re-testing yesterday's exact `404` and confirming it's now `200`) is complete. Next topic: likely wiring `fieldops-web` into `docker-compose.yml` alongside `FieldOps.Api`, or moving into container-image/Kubernetes topics, per Week 19's roadmap. Exact Day 99 scope to be confirmed at the start of the session.
+2. Begin Phase 5, **Week 19**, Day 100 — Day 99 (first Kubernetes Deployment + Service for `fieldops-web`, self-healing demonstrated live) is complete. Next topic: likely liveness/readiness probes, per Week 19's roadmap. Exact Day 100 scope to be confirmed at the start of the session. Note: Docker Desktop (and its Kubernetes) may need to be started at the top of the session.
 3. Unresolved: `REQUIREMENTS_MATRIX.md`'s "Authentication" row says "Phase 2" while `ROADMAP.md` places JWT in Phase 5/Week 18 — ask Berkan whether the matrix label is simply stale and should be corrected.
 4. Still outstanding from Day 88: ask Berkan whether he wants his real local SQL Express database's accumulated demo/test data (work orders titled "Day 76" through "Day 88", plus Day 92's additions) cleaned up — a destructive action requiring his explicit confirmation, never done unilaterally.
 5. Wait for approval (`UYGULA`) before creating or editing any application files.
