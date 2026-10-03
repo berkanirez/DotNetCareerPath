@@ -1,0 +1,39 @@
+# Day 102: one entry point for both services. These routing rules are
+# controller-agnostic (the standard networking.k8s.io/v1 Ingress resource) —
+# only ingressClassName ties them to today's controller.
+#
+# Controller note: today's local cluster runs ingress-nginx, which the
+# Kubernetes project announced would be retired in March 2026 (no further
+# security fixes). Acceptable for a local, non-internet-facing learning
+# cluster; a real deployment should use a maintained controller (e.g.
+# Traefik) or the newer Gateway API.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fieldops
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          # The API's own routes already start with /api (e.g.
+          # /api/workorders), so requests are passed through unchanged — no
+          # path rewriting needed.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: fieldops-api
+                port:
+                  number: 80
+          # Everything else goes to the frontend, including Angular deep
+          # links like /work-orders/28 (handled by Day 98's nginx fallback).
+          # When two Prefix paths both match, the longer one (/api) wins, so
+          # the order of these entries doesn't matter.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fieldops-web
+                port:
+                  number: 80

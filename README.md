@@ -117,6 +117,17 @@ kubectl port-forward svc/fieldops-api 8084:80
 
 The Secret is created from the command line on purpose: Kubernetes Secrets are only base64-encoded, so no Secret manifest is committed.
 
+* **Ingress** — a single entry point: `/api/...` routes to the API, everything else to the frontend.
+
+```
+# requires an ingress controller; the local setup used ingress-nginx:
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f k8s/fieldops-ingress.yaml
+curl http://localhost/api/organizations
+```
+
+ingress-nginx was announced for retirement by the Kubernetes project (March 2026); it is used here only on a local cluster. The Ingress rules themselves are controller-agnostic.
+
 ### Running the tests
 
 ```
