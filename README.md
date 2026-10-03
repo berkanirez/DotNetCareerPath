@@ -98,13 +98,13 @@ Then open `http://localhost:4200`.
 
 ### Kubernetes (`k8s/`)
 
-* **Frontend** — a Deployment (two replicas, liveness and readiness probes) and a ClusterIP Service. The image is a multi-stage build (Node build stage → nginx) with a client-side-routing fallback.
+* **Frontend** — a Deployment (liveness and readiness probes), a ClusterIP Service, and a HorizontalPodAutoscaler scaling between 2 and 6 replicas on CPU utilization (requires metrics-server). The image is a multi-stage build (Node build stage → nginx) with a client-side-routing fallback.
 * **API** — a Deployment and Service configured through a ConfigMap (non-secret settings) and a Secret (connection strings). Readiness targets `/health/ready` (SQL Server and Redis reachability), liveness targets `/health/live` (no external checks), so a dependency outage takes the Pod out of traffic without restarting it. The dependencies run under Docker Compose on the host and are reached via `host.docker.internal`.
 
 ```
 # frontend
 docker build -t fieldops-web:day98 src/fieldops-web
-kubectl apply -f k8s/fieldops-web-deployment.yaml -f k8s/fieldops-web-service.yaml
+kubectl apply -f k8s/fieldops-web-deployment.yaml -f k8s/fieldops-web-service.yaml -f k8s/fieldops-web-hpa.yaml
 
 # API (dependencies first: docker compose up -d sqlserver redis rabbitmq elasticsearch, then migrations)
 docker build -t fieldops-api:day101 .

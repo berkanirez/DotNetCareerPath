@@ -1,0 +1,28 @@
+# Day 103: automatic scaling for the frontend. The Deployment's own
+# `replicas: 2` becomes just the starting point — from here on, this
+# autoscaler decides the replica count, between minReplicas and maxReplicas.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fieldops-web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fieldops-web
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Keep average CPU across all Pods around 50% of each Pod's request.
+          averageUtilization: 50
+  behavior:
+    scaleDown:
+      # Shortened for the demo. Kubernetes's default is 300 seconds: after
+      # load drops, it waits five minutes before removing Pods, so a brief
+      # lull doesn't cause Pods to be removed and immediately re-added.
+      stabilizationWindowSeconds: 30

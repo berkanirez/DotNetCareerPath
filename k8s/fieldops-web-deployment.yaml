@@ -24,6 +24,14 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
+          # Day 103: the HorizontalPodAutoscaler computes "% CPU" relative to
+          # this request — without it, CPU-based autoscaling can't work at all.
+          # Deliberately tiny: nginx serving static files barely uses CPU, so
+          # a small request makes a modest synthetic load visible as a high
+          # percentage. A real value would be set from measured usage.
+          resources:
+            requests:
+              cpu: 10m
           # Day 100: without probes, Kubernetes only knows whether the
           # container PROCESS exists — not whether nginx actually answers.
           # Both probes hit "/" over HTTP. Note: because of Day 98's
