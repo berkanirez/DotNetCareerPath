@@ -1,0 +1,17 @@
+# Day 101: non-secret settings only. Each key becomes an environment
+# variable in the API container; ASP.NET Core maps "__" to ":" so
+# Redis__ConnectionString overrides appsettings.json's Redis:ConnectionString
+# — the same mechanism docker-compose.yml's `environment:` block uses.
+#
+# host.docker.internal: Docker Desktop's name for the host machine, reachable
+# from inside the cluster. Today the dependencies run under Docker Compose on
+# the host, on the host ports docker-compose.yml publishes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fieldops-api-config
+data:
+  ASPNETCORE_ENVIRONMENT: "Development"
+  Redis__ConnectionString: "host.docker.internal:63790"
+  RabbitMq__HostName: "host.docker.internal"
+  Elasticsearch__Uri: "http://host.docker.internal:9200"

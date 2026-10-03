@@ -98,13 +98,24 @@ Then open `http://localhost:4200`.
 
 ### Kubernetes (`k8s/`)
 
-A Deployment (two replicas, liveness and readiness probes) and a ClusterIP Service for the frontend. The frontend image is a multi-stage build (Node build stage → nginx) with a client-side-routing fallback.
+* **Frontend** — a Deployment (two replicas, liveness and readiness probes) and a ClusterIP Service. The image is a multi-stage build (Node build stage → nginx) with a client-side-routing fallback.
+* **API** — a Deployment and Service configured through a ConfigMap (non-secret settings) and a Secret (connection strings). Readiness targets `/health/ready` (SQL Server and Redis reachability), liveness targets `/health/live` (no external checks), so a dependency outage takes the Pod out of traffic without restarting it. The dependencies run under Docker Compose on the host and are reached via `host.docker.internal`.
 
 ```
+# frontend
 docker build -t fieldops-web:day98 src/fieldops-web
-kubectl apply -f k8s/
-kubectl port-forward svc/fieldops-web 8082:80
+kubectl apply -f k8s/fieldops-web-deployment.yaml -f k8s/fieldops-web-service.yaml
+
+# API (dependencies first: docker compose up -d sqlserver redis rabbitmq elasticsearch, then migrations)
+docker build -t fieldops-api:day101 .
+kubectl create secret generic fieldops-api-secrets \
+  --from-literal=ConnectionStrings__FieldOpsWorkOrdersDb="Server=host.docker.internal,14330;Database=FieldOpsWorkOrders;User Id=sa;Password=<SA_PASSWORD>;TrustServerCertificate=True;"
+  # ...one --from-literal per module (Organizations, Employees, WorkOrders, Customers, AuditLogs)
+kubectl apply -f k8s/fieldops-api-configmap.yaml -f k8s/fieldops-api-deployment.yaml
+kubectl port-forward svc/fieldops-api 8084:80
 ```
+
+The Secret is created from the command line on purpose: Kubernetes Secrets are only base64-encoded, so no Secret manifest is committed.
 
 ### Running the tests
 
@@ -118,7 +129,7 @@ cd src/fieldops-web && npx ng test # frontend: unit tests (Vitest)
 * JWT issuance exists, but no endpoint enforces it yet — requests are still identified by unverified `X-Organization-Id` / `X-Employee-Id` headers. Login takes only an employee id (no password), and role-based hiding in the frontend is a UI convenience, not authorization.
 * The JWT signing key is in `appsettings.Development.json` (development only).
 * The AI provider is a deterministic fake; evidence "attachments" are plain text notes.
-* Only the frontend is deployed to Kubernetes so far; the API and its dependencies run under Docker Compose.
+* In Kubernetes, the API's dependencies (SQL Server, Redis, RabbitMQ, Elasticsearch) still run outside the cluster under Docker Compose, and the notification service is not deployed to the cluster yet.
 * Migrations are applied by hand rather than by a dedicated migration job.
 
 ---
