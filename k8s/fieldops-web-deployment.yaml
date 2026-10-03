@@ -24,3 +24,25 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
+          # Day 100: without probes, Kubernetes only knows whether the
+          # container PROCESS exists — not whether nginx actually answers.
+          # Both probes hit "/" over HTTP. Note: because of Day 98's
+          # try_files fallback, ANY path returns 200 here, so a probe's path
+          # can't detect much — what it really proves is "nginx is up and
+          # answering HTTP on this port."
+          readinessProbe:
+            # Failing = "don't send me traffic right now": the Pod is
+            # removed from the Service's endpoints, but NOT restarted.
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            # Failing = "I'm broken": Kubernetes restarts the container.
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3

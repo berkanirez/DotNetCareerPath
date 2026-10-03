@@ -1,137 +1,46 @@
 # FieldOps Operations Platform
 
-## Objective
+A .NET 10 backend portfolio built around **FieldOps**, a multi-tenant field-service management platform, plus two smaller supporting applications. FieldOps starts as a modular monolith and grows into a distributed system with messaging, search, observability, an Angular frontend, and Kubernetes deployment manifests.
 
-A long-term, project-based learning workspace to transfer Berkan's existing professional backend experience (Node.js, TypeScript, Express, Keystone.js, Apollo GraphQL, Prisma, REST/GraphQL APIs, SQL databases, JWT, RBAC, and related backend fundamentals) into the .NET ecosystem, culminating in production-minded junior/junior+ .NET backend competence.
+## Projects
 
-## Learning approach
-
-* Project-based: every phase produces a real, working application, not isolated exercises.
-* Explain-then-implement: concepts and a plan are presented first; application code is written only after explicit approval.
-* Vertical slices: each session delivers one complete, demonstrable piece of behavior.
-* Evidence-driven: skills are only credited with recorded evidence (tests, commits, working endpoints, explanations).
-* Depth over breadth: when in doubt, fewer topics are covered more deeply rather than many topics superficially.
-* Generated or compiling code alone does not count as completed learning. A task is only done when Berkan can explain the runtime and data flow, tests pass, and evidence is recorded — see the Definition of Done in `CLAUDE.md`.
-
-## Project list
-
-1. **RoadmapOS** — single-user ASP.NET Core MVC app tracking this very learning roadmap.
-2. **StockPilot Inventory and Order API** — controller-based REST Web API with EF Core, auth, and testing.
-3. **FieldOps SaaS Modular Monolith** — multi-tenant modular monolith with caching, background jobs, and Docker.
-4. **Distributed FieldOps** — the FieldOps domain split into services with messaging, outbox/inbox, and search.
-5. **Angular Operations Console** — Angular frontend integrating with the FieldOps backend.
-6. **Cloud and Kubernetes Deployment** — containerized, Kubernetes-orchestrated, cloud-deployed delivery pipeline.
-
-## Current status
-
-* **Phase:** Phase 1 — RoadmapOS (V1 released); Phase 2 — StockPilot Inventory and Order API (complete); Phase 3 — FieldOps SaaS Modular Monolith (Weeks 7-12, nearly complete)
-* **Project:** FieldOps SaaS Modular Monolith
-* **Week:** 12 (final week of Phase 3)
-* **Day:** 65
-* **Progress:** ~59%
-
-See [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) for full detail.
-
-## RoadmapOS (Phase 1 project)
-
-RoadmapOS is a single-user ASP.NET Core MVC application that tracks this very learning roadmap: skills with target/current levels, roadmap phases/projects/milestones, evidence records, and an overall/category progress dashboard.
-
-### Prerequisites
-
-* .NET 10 SDK
-* SQL Server (Express, Developer, or any local instance) — a connection string is configured in `src/RoadmapOS.Web/appsettings.Development.json` for a local `localhost\SQLEXPRESS` instance; adjust it if your instance name differs.
-
-### Running it locally
-
-```
-cd src/RoadmapOS.Web
-dotnet restore
-dotnet ef database update
-dotnet run
-```
-
-The app seeds starter data automatically on first run (in `Development` only — see `src/RoadmapOS.Web/Data/DbSeeder.cs`). Then visit:
-
-* `/` — home page
-* `/Skills` — list, create and edit skills, with an evidence count per skill
-* `/Dashboard` — overall and per-category progress
-
-### Running the tests
-
-```
-dotnet test
-```
-
-(Run from the repository root to pick up the `RoadmapOS.Web.Tests` project via the solution.)
-
-### Known simplifications (V1)
-
-* Single user, no authentication.
-* Seed data is a runtime, idempotent seeder rather than EF Core's `HasData()` (see `Data/DbSeeder.cs` for why).
-* `Evidence` records are tracked and displayed but not yet enforced by any business rule.
-* No delete flow for skills.
-* An advanced UI was deliberately not used.
-
-## StockPilot Inventory and Order API (Phase 2 project)
-
-StockPilot is a controller-based ASP.NET Core Web API for product inventory, with JWT authentication (access + refresh tokens, rotation), role-based and policy-based authorization, EF Core + SQL Server persistence, optimistic concurrency, transactions, and a full test suite (unit, mocked, and real HTTP integration tests running against a Testcontainers-managed, disposable SQL Server).
-
-### Prerequisites
-
-* .NET 10 SDK
-* SQL Server (Express, Developer, or any local instance) — a connection string is configured in `src/StockPilot.Api/appsettings.Development.json` for a local `localhost\SQLEXPRESS` instance; adjust it if your instance name differs.
-* Docker — required only to run the integration test suite (`tests/StockPilot.Api.Tests`), which spins up its own disposable SQL Server container via Testcontainers. Not needed to run the API itself.
-
-### Running it locally
-
-```
-cd src/StockPilot.Api
-dotnet restore
-dotnet ef database update
-dotnet run
-```
-
-The app seeds three starter products automatically on first run (in `Development` only — see `src/StockPilot.Api/Data/DbSeeder.cs`). Then visit:
-
-* `/scalar/v1` — interactive API documentation (try requests directly from the browser)
-* `/openapi/v1.json` — the raw OpenAPI schema Scalar renders
-* `/api/products` — list products (search/sortBy/page/pageSize query parameters, no authentication required)
-
-Two demo accounts exist for `POST /api/auth/login` (see `Controllers/AuthController.cs` — there is no real user store yet, see "Known simplifications" below):
-
-| Username | Password | Role |
+| Project | Type | Highlights |
 |---|---|---|
-| `admin` | `Passw0rd!` | `Admin` |
-| `employee` | `Employee123!` | `Employee` |
+| **FieldOps** | Modular monolith + extracted service + Angular frontend | Multi-tenancy, database-per-module, Redis caching, RabbitMQ with outbox/inbox, Elasticsearch, OpenTelemetry, Polly resilience, JWT, Docker, Kubernetes |
+| **StockPilot** | ASP.NET Core Web API | JWT access/refresh tokens with rotation, role- and policy-based authorization, optimistic concurrency, Testcontainers integration tests |
+| **RoadmapOS** | ASP.NET Core MVC | Server-rendered CRUD, EF Core relationships, a progress dashboard |
 
-Deleting a product (`DELETE /api/products/{id}`) and bulk-creating products (`POST /api/products/bulk`) both require a valid access token from the `Admin` account; every other endpoint is open to anyone.
+## Tech stack
 
-### Running the tests
+* .NET 10, ASP.NET Core (controller-based APIs, MVC), C# with nullable reference types
+* Entity Framework Core, SQL Server
+* Redis, RabbitMQ, Elasticsearch
+* OpenTelemetry (tracing, metrics), Polly (timeouts, circuit breaker)
+* xUnit, Testcontainers
+* Angular 22 (standalone components, signals, reactive forms)
+* Docker, Docker Compose, Kubernetes, GitHub Actions
 
-```
-dotnet test
-```
+---
 
-(Run from the repository root, or `cd tests/StockPilot.Api.Tests` — either picks up all tests via the solution.) This includes real HTTP integration tests (`ProductsAuthorizationIntegrationTests.cs`) that spin up their own disposable SQL Server container — **Docker must be running** for these to pass; every other test (unit tests, mocked tests) runs with no external dependency at all.
+## FieldOps
 
-### Known simplifications
+FieldOps manages organizations, employees, customers, and work orders for field-service teams.
 
-* Two hardcoded demo accounts (`admin`/`employee`) — no real `Users` table, no registration flow, no password reset.
-* The JWT signing key lives in `appsettings.Development.json`, committed to source control — explicitly named and documented as dev-only; a real deployment needs it in user-secrets/Key Vault/an environment variable instead.
-* `InMemoryRefreshTokenStore` (currently the app's real, registered implementation) is lost on every app restart and never shared across multiple server instances — production needs a shared store (a database table or Redis).
-* Only a `Product` domain exists — the "Order API" half of StockPilot's name (orders, warehouses, inventory movements, stock reservations) has not been built yet; policy-based authorization (`CanManageProducts`) is scoped only to what exists today.
-* No rate limiting, no refresh-token-family revocation on detected reuse, no HTTPS certificate pinning — reasonable gaps for a learning project, not claimed as production-hardened.
+### Architecture
 
-## FieldOps SaaS Modular Monolith (Phase 3 project)
+* **Modular monolith** — five modules (Organizations, Employees, Customers, Work Orders, Audit Logs), each a separate class library with `internal` domain entities and its **own SQL Server database**, exposing only a public interface and DTOs to the host API. Cross-module references are validated in application code, not by foreign keys (see [ADR 0003](docs/adr/0003-database-per-module.md)).
+* **Work order lifecycle** — Open → Assigned → InProgress → Completed, with reassignment, reopening, and customer approval, guarded by tenant isolation and role/ownership checks on every action.
+* **Caching** — a Redis cache-aside status report with explicit invalidation and a background cache warmer.
+* **Messaging** — completing a work order writes an **outbox** row in the same transaction as the state change; a background publisher delivers it to RabbitMQ and retries until it succeeds. Consumers use an **inbox** table for idempotency, exponential-backoff reconnects, and a dead-letter queue for unprocessable messages.
+* **Notification service** — a separately deployable .NET worker service (`FieldOps.NotificationService`) with no compile-time dependency on the API, consuming work-order events over RabbitMQ ([ADR 0005](docs/adr/0005-notification-service-boundary.md)).
+* **Search** — work orders are mirrored into Elasticsearch (via the same outbox) for tenant-filtered full-text search, with a per-organization index rebuild endpoint. SQL Server remains the source of truth.
+* **External integration** — a SOAP service consumed behind an anti-corruption layer ([ADR 0009](docs/adr/0009-anti-corruption-layer.md)).
+* **Observability and resilience** — structured JSON logging with correlation IDs, OpenTelemetry distributed tracing propagated through RabbitMQ message headers, custom metrics (including outbox publish lag), `/health/live` and `/health/ready` endpoints, and a Polly timeout + circuit breaker around Elasticsearch.
+* **Cross-cutting** — per-organization rate limiting, idempotency keys, audit logging, and an `IAiProvider` abstraction for summarizing work-order evidence notes.
 
-FieldOps is a multi-tenant field-service management backend built as a **modular monolith**: five independent modules (Organizations, Employees, Customers, Work Orders, Audit Logs), each its own class library with `internal` domain entities and its own physically separate SQL Server database, exposing only a public DTO and interface to the host API. Work orders move through a full lifecycle (Open → Assigned → InProgress → Completed, with reassignment, reopening, and customer approval), guarded by tenant-isolation and role/ownership-based authorization tested across every action. Redis backs a cache-aside status report with a background cache warmer; audit logs, per-organization rate limiting, and idempotency round out the production-minded concerns. A generic `IAiProvider` abstraction (with a deterministic fake implementation) powers an AI-generated summary of a work order's evidence notes, with its own failure-handling path. Structured logging (with correlation IDs) and `/health/live` + `/health/ready` endpoints support debugging; the whole stack (API, SQL Server, Redis) runs via Docker Compose and is exercised by CI on every push.
+Architecture decisions are recorded in [docs/adr](docs/adr).
 
-### Prerequisites
-
-* .NET 10 SDK
-* Docker — required either way: to run FieldOps itself via Docker Compose (recommended), or to run its integration test suite (`tests/FieldOps.Api.Tests`), which spins up its own disposable SQL Server container via Testcontainers regardless of how the app itself is run.
-
-### Running it locally (Docker Compose — recommended)
+### Running it with Docker Compose
 
 ```
 cp .env.example .env
@@ -139,7 +48,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Then, once the containers are up, apply migrations for all five modules against the containerized SQL Server (exposed on `localhost,14330`) — repeat for each module directory:
+This starts SQL Server, Redis, RabbitMQ, Elasticsearch, the API, and the notification service. Apply migrations for each of the five modules against the containerized SQL Server (exposed on `localhost,14330`):
 
 ```
 cd src/FieldOps.Modules.Organizations && dotnet ef database update --connection "Server=localhost,14330;Database=FieldOpsOrganizations;User Id=sa;Password=<your SA_PASSWORD>;TrustServerCertificate=True;" && cd ../..
@@ -148,79 +57,137 @@ cd src/FieldOps.Modules.Organizations && dotnet ef database update --connection 
 
 Then visit:
 
-* `http://localhost:5190/health/ready` — should report every dependency `Healthy`
+* `http://localhost:5190/health/ready` — dependency health
 * `http://localhost:5190/api/organizations` — seeded organizations
 * `http://localhost:5190/api/workorders` — requires `X-Organization-Id` and `X-Employee-Id` headers (see below)
 
 Tear down with `docker compose down`.
 
-### Running it locally (without Docker Compose)
-
-* A local SQL Server instance (`localhost\SQLEXPRESS`, Windows Authentication) and a local Redis instance (e.g. `docker run -d -p 6379:6379 redis:7-alpine`) are required — connection strings are in `src/FieldOps.Api/appsettings.Development.json`.
-* Apply migrations the same way as above, once per module directory, but with plain `dotnet ef database update` (each module's own `*DbContextFactory.cs` already points at `localhost\SQLEXPRESS`).
-* `cd src/FieldOps.Api && dotnet run`.
-
 ### Seeded demo identities
 
-Every request needs an `X-Organization-Id` header, and (for employee-acting endpoints) an `X-Employee-Id` header, or (for the customer-approval endpoint) an `X-Customer-Id` header — there is no real authentication yet (see "Known simplifications" below).
+Requests identify the caller with an `X-Organization-Id` header and, for employee actions, an `X-Employee-Id` header (or `X-Customer-Id` for customer approval).
 
 | Organization | Employee (Admin) | Employee (Member) | Customer |
 |---|---|---|---|
 | 1 | id `1` | id `2` | id `1` |
 | 2 | id `3` | id `4` | — |
 
-Example: create a work order as Org 1's Admin, assign it (evidence can only be added by the assignee), add an evidence note, then read its AI-generated summary:
+Example:
 
 ```
 curl -X POST http://localhost:5190/api/workorders \
   -H "X-Organization-Id: 1" -H "X-Employee-Id: 1" -H "Content-Type: application/json" \
   -d '{"Title":"Fix the HVAC unit"}'
 
-curl -X POST http://localhost:5190/api/workorders/1/assign \
-  -H "X-Organization-Id: 1" -H "X-Employee-Id: 1" -H "Content-Type: application/json" \
-  -d '{"EmployeeId":1}'
+curl http://localhost:5190/api/workorders/report -H "X-Organization-Id: 1" -H "X-Employee-Id: 1"
+```
 
-curl -X POST http://localhost:5190/api/workorders/1/evidence \
-  -H "X-Organization-Id: 1" -H "X-Employee-Id: 1" -H "Content-Type: application/json" \
-  -d '{"Note":"Checked the compressor, replaced the filter."}'
+### Angular frontend (`src/fieldops-web`)
 
-curl http://localhost:5190/api/workorders/1/summary -H "X-Organization-Id: 1" -H "X-Employee-Id: 1"
-# => "[Fake AI summary] Summarize the following field service evidence notes in one or two sentences:\n1. Checked the compressor, replaced the filter."
+An Angular 22 app with work order list, detail, create, dashboard, and login screens. It uses standalone components, signals (the app is zoneless), reactive forms, client-side routing, and an HTTP interceptor that attaches a JWT from `POST /api/auth/login` to outgoing requests.
+
+To run it against a locally running API (`cd src/FieldOps.Api && dotnet run` on `http://localhost:5138`, which allows CORS from `http://localhost:4200`):
+
+```
+cd src/fieldops-web
+npm install
+npm start
+```
+
+Then open `http://localhost:4200`.
+
+### Kubernetes (`k8s/`)
+
+A Deployment (two replicas, liveness and readiness probes) and a ClusterIP Service for the frontend. The frontend image is a multi-stage build (Node build stage → nginx) with a client-side-routing fallback.
+
+```
+docker build -t fieldops-web:day98 src/fieldops-web
+kubectl apply -f k8s/
+kubectl port-forward svc/fieldops-web 8082:80
 ```
 
 ### Running the tests
 
 ```
-dotnet test FieldOps.slnx
+dotnet test FieldOps.slnx          # backend: HTTP integration tests against Testcontainers SQL Server (Docker required)
+cd src/fieldops-web && npx ng test # frontend: unit tests (Vitest)
 ```
 
-Every test is a real HTTP integration test against a disposable, Testcontainers-managed SQL Server — **Docker must be running**. There is no separate unit-test-only subset that skips Docker, aside from `WorkOrderNoteSummaryServiceTests.cs`, which uses hand-written fakes and needs no infrastructure at all.
+### Known limitations
 
-### Known simplifications
+* JWT issuance exists, but no endpoint enforces it yet — requests are still identified by unverified `X-Organization-Id` / `X-Employee-Id` headers. Login takes only an employee id (no password), and role-based hiding in the frontend is a UI convenience, not authorization.
+* The JWT signing key is in `appsettings.Development.json` (development only).
+* The AI provider is a deterministic fake; evidence "attachments" are plain text notes.
+* Only the frontend is deployed to Kubernetes so far; the API and its dependencies run under Docker Compose.
+* Migrations are applied by hand rather than by a dedicated migration job.
 
-* `X-Organization-Id` / `X-Employee-Id` / `X-Customer-Id` are plain, unverified client-supplied headers — there is no real authentication (login, tokens) yet, unlike StockPilot's JWT-based auth.
-* No real AI provider is integrated — `IAiProvider`'s only implementation (`FakeAiProvider`) is deterministic and offline, proving the abstraction and its failure-handling path work, not that it produces a genuinely useful summary.
-* Evidence "attachments" are plain text notes — no real file/photo upload infrastructure exists.
-* Each module's database-per-module design (ADR 0003) means there are no real cross-module foreign keys — cross-module references are validated in application code, not enforced by the database.
-* Rate limiting and idempotency have no automated behavioral/threshold tests (Redis's unreliability in CI at the time) — verified live instead, a documented and deliberate trade-off, not an oversight.
-* Migrations are applied by hand (or a CI retry loop) against the Compose stack — a real deployment would use a dedicated one-off migration job.
+---
 
-## Documentation
+## StockPilot Inventory API
 
-* [CLAUDE.md](CLAUDE.md) — persistent instructions and rules for how learning sessions are run.
-* [docs/ROADMAP.md](docs/ROADMAP.md) — the full 22-week learning plan.
-* [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) — source of truth for current phase, week, day and next task.
-* [docs/REQUIREMENTS_MATRIX.md](docs/REQUIREMENTS_MATRIX.md) — skill requirements, target levels and evidence tracking.
-* [docs/LEARNING_LOG.md](docs/LEARNING_LOG.md) — history of completed learning sessions.
+A controller-based ASP.NET Core Web API for product inventory: JWT authentication (access + refresh tokens, rotation), role-based and policy-based authorization, EF Core + SQL Server, optimistic concurrency, transactions, and unit, mocked, and real HTTP integration tests (against a Testcontainers-managed SQL Server).
 
-## Development environment
+### Running it
 
-* Visual Studio Code
-* C# Dev Kit
-* Claude Code
-* .NET 10 LTS
-* Standard .NET CLI (`dotnet new`, `dotnet restore`, `dotnet build`, `dotnet run`, `dotnet test`, `dotnet ef`)
+Requires the .NET 10 SDK and a local SQL Server (`localhost\SQLEXPRESS` by default — see `src/StockPilot.Api/appsettings.Development.json`).
 
-## Note on completion
+```
+cd src/StockPilot.Api
+dotnet ef database update
+dotnet run
+```
 
-Generated or compiling code alone does not count as completed learning. A task is only considered done when its Definition of Done is satisfied: intended behavior works, the project builds, relevant tests pass, Berkan can explain the runtime and data flow, failure cases have been considered, and evidence has been recorded.
+* `/scalar/v1` — interactive API documentation
+* `/api/products` — list products (search, sort, paging)
+
+Demo accounts for `POST /api/auth/login`:
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `Passw0rd!` | `Admin` |
+| `employee` | `Employee123!` | `Employee` |
+
+Deleting and bulk-creating products require an `Admin` access token.
+
+### Running the tests
+
+```
+dotnet test StockPilot.slnx
+```
+
+Integration tests need Docker running.
+
+### Known limitations
+
+* Two hardcoded demo accounts; no user store, registration, or password reset.
+* Refresh tokens are stored in memory (lost on restart, not shared across instances).
+* Only the product domain exists; orders and warehouses are not built.
+
+---
+
+## RoadmapOS
+
+A single-user ASP.NET Core MVC app for tracking skills (target and current levels), projects and milestones, and evidence records, with an overall and per-category progress dashboard.
+
+### Running it
+
+Requires the .NET 10 SDK and a local SQL Server (`localhost\SQLEXPRESS` by default — see `src/RoadmapOS.Web/appsettings.Development.json`).
+
+```
+cd src/RoadmapOS.Web
+dotnet ef database update
+dotnet run
+```
+
+Starter data is seeded automatically in `Development`. Pages: `/Skills`, `/Dashboard`.
+
+### Running the tests
+
+```
+dotnet test RoadmapOS.slnx
+```
+
+### Known limitations
+
+* Single user, no authentication.
+* No delete flow for skills.

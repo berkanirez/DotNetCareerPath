@@ -88,3 +88,11 @@ desktop.ini
 *.bak
 *.swp
 *~
+
+## Local working notes — not published
+CLAUDE.md
+docs/ROADMAP.md
+docs/CURRENT_STATE.md
+docs/REQUIREMENTS_MATRIX.md
+docs/LEARNING_LOG.md
+docs/daily-code-notes/
